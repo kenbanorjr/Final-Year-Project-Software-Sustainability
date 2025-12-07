@@ -1,0 +1,49 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.env/
+.python-version
+
+# Packaging / build
+*.egg-info/
+.eggs/
+dist/
+build/
+pip-wheel-metadata/
+
+# Testing
+.pytest_cache/
+.coverage
+coverage.xml
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+
+# Data cloned from upstream repos (regenerate via scripts)
+data/raw_repos/
+RxJava/
+axios/
+checkstyle/
+commons-lang/
+dropwizard/
+flask/
+gin/
+guava/
+java-design-patterns/
+junit5/
+mybatis-3/
+spring-petclinic/
+spring-petclinic-rest/
+subpar/
+argo-client-java/
+java-sdk/
