@@ -47,3 +47,9 @@ spring-petclinic-rest/
 subpar/
 argo-client-java/
 java-sdk/
+
+# Local env files (do not commit)
+env.ps1
+env.sh
+configs/env.ps1
+configs/env.sh
