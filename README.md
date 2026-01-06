@@ -23,13 +23,14 @@ pip install -r requirements.txt
 
 ```bash
 python main.py
-python visualize_metrics.py
-python visualize_sonar_metrics.py
+python visualizations/visualize_metrics.py
+python visualizations/visualize_sonar_metrics.py
 ```
 
 ## Configuration
 
 All configuration lives in `config.py` and environment variables.
+Sample environment templates live in `env.ps1.example` and `env.sh.example`.
 
 Required environment variables:
 
