@@ -20,7 +20,14 @@ from pydriller import Repository
 
 import config
 
-REPRESENTATIVE_EXTENSIONS = {".py", ".java"}
+REPRESENTATIVE_EXTENSIONS = {".py", ".java", ".go", ".js", ".ts"}
+EXTENSION_LANGUAGE = {
+    ".py": "python",
+    ".java": "java",
+    ".go": "go",
+    ".js": "javascript",
+    ".ts": "typescript",
+}
 MIN_LOC = 50
 MAX_LOC = 400
 WINDOW_DAYS = 365  # 12 months
@@ -56,13 +63,19 @@ def _count_loc(path: Path) -> int:
     return count
 
 
+def _infer_language(path: str | Path) -> str:
+    suffix = Path(path).suffix.lower()
+    return EXTENSION_LANGUAGE.get(suffix, "other")
+
+
 def find_representative_files(repo_path: Path) -> Dict[str, int]:
     """Return mapping of relative file path -> LOC for representative files."""
     reps: Dict[str, int] = {}
     for file_path in repo_path.rglob("*"):
         if not file_path.is_file():
             continue
-        if file_path.suffix not in REPRESENTATIVE_EXTENSIONS:
+        suffix = file_path.suffix.lower()
+        if suffix not in REPRESENTATIVE_EXTENSIONS:
             continue
         loc = _count_loc(file_path)
         if MIN_LOC <= loc <= MAX_LOC:
@@ -100,6 +113,8 @@ def mine_repository(repo_path: Path, since: datetime) -> List[dict]:
     Churn: total added + removed lines per file.
     Bus-factor risk: file touched by exactly one author in the window.
     """
+    analysis_date_utc = config.now_utc_iso()
+    repo_head_sha = config.git_head_sha(repo_path)
     representative_files = find_representative_files(repo_path)
     if not representative_files:
         return []
@@ -138,7 +153,12 @@ def mine_repository(repo_path: Path, since: datetime) -> List[dict]:
             author_line_additions[rel_path][author] += added
 
     repo_url = _repo_url_lookup().get(repo_path.name, "")
-    repo_category = config.repo_category(repo_url)
+    seed_category = config.repo_category(repo_url)
+    activity_label = (
+        "ACTIVE"
+        if repo_commit_count >= 24 and len(repo_authors) >= 3
+        else "STAGNANT"
+    )
 
     rows: List[dict] = []
     for rel_path, loc in representative_files.items():
@@ -167,8 +187,12 @@ def mine_repository(repo_path: Path, since: datetime) -> List[dict]:
             {
                 "repo": repo_path.name,
                 "repo_url": repo_url,
-                "category": repo_category,
+                "seed_category": seed_category,
+                "activity_label": activity_label,
+                "analysis_date_utc": analysis_date_utc,
+                "repo_head_sha": repo_head_sha,
                 "file_path": rel_path,
+                "file_language": _infer_language(rel_path),
                 "absolute_path": str((repo_path / rel_path).resolve()),
                 "lines_of_code": loc,
                 "unique_authors_12m": unique_authors,

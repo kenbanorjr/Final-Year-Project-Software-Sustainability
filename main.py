@@ -11,12 +11,14 @@ Steps:
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import pandas as pd
 
 import config
 import llm_judge
+import llm_repo_summary
 import miner
 import sonar_runner
 
@@ -35,6 +37,17 @@ def _safe_read_csv(path: Path) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def _drop_overlapping_columns(df: pd.DataFrame, existing_cols: set[str]) -> pd.DataFrame:
+    """Drop non-key columns that would collide on merge."""
+    if df.empty:
+        return df
+    protected = {"repo", "file_path"}
+    overlap = (set(df.columns) & existing_cols) - protected
+    if not overlap:
+        return df
+    return df.drop(columns=sorted(overlap))
+
+
 def merge_outputs(
     git_metrics_csv: Path, sonar_metrics_csv: Path, llm_metrics_csv: Path, output_path: Path
 ) -> Path:
@@ -43,10 +56,15 @@ def merge_outputs(
     sonar_df = _safe_read_csv(sonar_metrics_csv)
     llm_df = _safe_read_csv(llm_metrics_csv)
 
+    if "seed_category" not in git_df.columns and "category" in git_df.columns:
+        git_df = git_df.rename(columns={"category": "seed_category"})
+
     merged = git_df
     if not sonar_df.empty:
+        sonar_df = _drop_overlapping_columns(sonar_df, set(merged.columns))
         merged = merged.merge(sonar_df, on=["repo", "file_path"], how="left")
     if not llm_df.empty:
+        llm_df = _drop_overlapping_columns(llm_df, set(merged.columns))
         merged = merged.merge(llm_df, on=["repo", "file_path"], how="left")
 
     merged.to_csv(output_path, index=False)
@@ -54,7 +72,18 @@ def merge_outputs(
     return output_path
 
 
-def main() -> None:
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the sustainability evaluation pipeline.")
+    parser.add_argument(
+        "--with-repo-summary",
+        action="store_true",
+        help="Generate llm_repo_summary.csv after merging datasets.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = _parse_args(argv)
     config.ensure_data_dirs()
 
     print("[main] Step 1: clone repositories")
@@ -77,6 +106,14 @@ def main() -> None:
         llm_metrics_csv=llm_metrics_csv,
         output_path=config.RESULTS_DIR / "final_dataset.csv",
     )
+    if args.with_repo_summary:
+        print("[main] Step 6: repo summary")
+        llm_repo_summary.run_repo_summaries()
+    if config.VALIDATE_OUTPUTS:
+        print("[main] Step 7: validate outputs")
+        import validate_outputs
+
+        validate_outputs.run_validation()
 
 
 if __name__ == "__main__":

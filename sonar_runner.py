@@ -20,6 +20,12 @@ import config
 
 SONAR_METRICS = (
     "complexity",
+    "ncloc",
+    "cognitive_complexity",
+    "comment_lines_density",
+    "reliability_rating",
+    "security_rating",
+    "sqale_rating",
     "sqale_index",
     "violations",
     "code_smells",
@@ -121,6 +127,12 @@ def fetch_file_metrics(project_key: str) -> List[dict]:
                     "project_key": project_key,
                     "file_path": path.replace("\\", "/"),
                     "sonar_complexity": measures.get("complexity"),
+                    "sonar_ncloc": measures.get("ncloc"),
+                    "sonar_cognitive_complexity": measures.get("cognitive_complexity"),
+                    "sonar_comment_lines_density": measures.get("comment_lines_density"),
+                    "sonar_reliability_rating": measures.get("reliability_rating"),
+                    "sonar_security_rating": measures.get("security_rating"),
+                    "sonar_sqale_rating": measures.get("sqale_rating"),
                     "sonar_sqale_index": measures.get("sqale_index"),
                     "sonar_violations": measures.get("violations"),
                     "sonar_code_smells": measures.get("code_smells"),
@@ -148,12 +160,19 @@ def collect_sonar_metrics(repo_paths: Iterable[Path], output_path: Path | None =
             continue
 
         project_key = project_key_for_repo(repo_path)
+        analysis_date_utc = config.now_utc_iso()
+        repo_head_sha = config.git_head_sha(repo_path)
+        sonar_host_url = config.SONAR_HOST_URL
         try:
             run_sonar_scan(repo_path, project_key)
             print(f"[sonar] Fetching metrics for {project_key}")
             rows = fetch_file_metrics(project_key)
             for row in rows:
                 row["repo"] = repo_path.name
+                row["analysis_date_utc"] = analysis_date_utc
+                row["repo_head_sha"] = repo_head_sha
+                row["sonar_host_url"] = sonar_host_url
+                row["sonar_project_key"] = project_key
                 all_rows.append(row)
         except Exception as exc:
             print(f"[sonar] Failed for {repo_path.name}: {exc}")

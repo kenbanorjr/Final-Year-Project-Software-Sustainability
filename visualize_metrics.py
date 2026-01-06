@@ -1,6 +1,7 @@
 """
 Git Metrics Visualization Script
-Provides interactive tables and charts for analyzing repository health metrics.
+Provides interactive tables and charts for analyzing repository health metrics,
+including data quality summaries for reporting.
 """
 
 import pandas as pd
@@ -13,6 +14,10 @@ DATA_PATH = Path("data/results/git_metrics.csv")
 OUTPUT_DIR = Path("data/results/visualizations")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+LOC_BANDS = [("50-150", 50, 150), ("151-275", 151, 275), ("276-400", 276, 400)]
+CHURN_BINS = [-1, 0, 50, 200, 500, 1000, float("inf")]
+CHURN_LABELS = ["0", "1-50", "51-200", "201-500", "501-1000", "1001+"]
+
 
 def load_data():
     """Load and prepare the git metrics data."""
@@ -20,6 +25,21 @@ def load_data():
     # Clean up boolean columns
     df['bus_factor_single_dev'] = df['bus_factor_single_dev'].map({'True': True, 'False': False, True: True, False: False})
     df['bus_factor_75_dominant_author'] = df['bus_factor_75_dominant_author'].map({'True': True, 'False': False, True: True, False: False})
+    numeric_cols = [
+        'lines_of_code',
+        'unique_authors_12m',
+        'repo_unique_authors_12m',
+        'repo_commits_12m',
+        'repo_commits_per_month_12m',
+        'churn_12m',
+        'added_lines_12m',
+        'deleted_lines_12m',
+        'dominant_author_share',
+        'last_12m_observed_commits',
+    ]
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
     return df
 
 
@@ -69,6 +89,81 @@ def risk_analysis_table(df):
     return risk_df[['repo', 'file_path', 'lines_of_code', 'unique_authors_12m', 
                     'dominant_author', 'dominant_author_share', 'bus_factor_single_dev', 
                     'churn_12m', 'risk_score']]
+
+
+def _assign_loc_band(loc_value):
+    if pd.isna(loc_value):
+        return "unknown"
+    for label, lower, upper in LOC_BANDS:
+        if lower <= loc_value <= upper:
+            return label
+    return "unknown"
+
+
+def data_quality_summary(df):
+    """Compute dataset-level validation stats for reporting."""
+    loc = df['lines_of_code']
+    churn = df['churn_12m']
+    dominant_share = df['dominant_author_share'].fillna(0)
+    single_dev = df['bus_factor_single_dev'].fillna(False)
+
+    summary = {
+        "total_files": len(df),
+        "total_repos": df['repo'].nunique(),
+        "loc_min": loc.min(),
+        "loc_median": loc.median(),
+        "loc_mean": loc.mean(),
+        "loc_max": loc.max(),
+        "churn_min": churn.min(),
+        "churn_median": churn.median(),
+        "churn_mean": churn.mean(),
+        "churn_max": churn.max(),
+        "single_dev_pct": single_dev.mean() * 100,
+        "dominant_share_75_pct": (dominant_share >= 0.75).mean() * 100,
+        "dominant_share_90_pct": (dominant_share >= 0.90).mean() * 100,
+    }
+
+    summary_df = pd.DataFrame(
+        [{"metric": key, "value": value} for key, value in summary.items()]
+    )
+    return summary_df
+
+
+def loc_band_distribution(df):
+    """Count representative files by LOC band."""
+    loc_df = df.copy()
+    loc_df['loc_band'] = loc_df['lines_of_code'].apply(_assign_loc_band)
+    loc_df['loc_band'] = pd.Categorical(
+        loc_df['loc_band'],
+        categories=[band[0] for band in LOC_BANDS] + ["unknown"],
+        ordered=True,
+    )
+    counts = loc_df['loc_band'].value_counts(dropna=False).sort_index()
+    total = counts.sum() or 1
+    return pd.DataFrame(
+        {
+            "loc_band": counts.index.astype(str),
+            "file_count": counts.values,
+            "percent_files": (counts.values / total) * 100,
+        }
+    )
+
+
+def churn_band_distribution(df):
+    """Bucket churn into bands for reporting."""
+    churn = df['churn_12m'].fillna(0)
+    churn_band = pd.cut(churn, bins=CHURN_BINS, labels=CHURN_LABELS)
+    counts = churn_band.value_counts(dropna=False).reindex(CHURN_LABELS, fill_value=0)
+    total = counts.sum() or 1
+    return pd.DataFrame(
+        {
+            "churn_band": counts.index.astype(str),
+            "file_count": counts.values,
+            "percent_files": (counts.values / total) * 100,
+        }
+    )
+
+
 
 
 def plot_repo_overview(df):
@@ -178,6 +273,26 @@ def interactive_display(df):
     print(f"   Total Repositories: {df['repo'].nunique()}")
     print(f"   Total Lines of Code: {df['lines_of_code'].sum():,}")
     print(f"   Files with Single Developer: {df['bus_factor_single_dev'].sum():,} ({df['bus_factor_single_dev'].mean()*100:.1f}%)")
+
+    quality_summary = data_quality_summary(df)
+    loc_summary = loc_band_distribution(df)
+    churn_summary = churn_band_distribution(df)
+
+    print("\nDATA QUALITY SUMMARY")
+    for _, row in quality_summary.iterrows():
+        if isinstance(row["value"], float):
+            value = f"{row['value']:.2f}"
+        else:
+            value = row["value"]
+        print(f"   {row['metric']}: {value}")
+
+    print("\nLOC BAND DISTRIBUTION")
+    for _, row in loc_summary.iterrows():
+        print(f"   {row['loc_band']}: {int(row['file_count'])} files ({row['percent_files']:.1f}%)")
+
+    print("\nCHURN BAND DISTRIBUTION")
+    for _, row in churn_summary.iterrows():
+        print(f"   {row['churn_band']}: {int(row['file_count'])} files ({row['percent_files']:.1f}%)")
     
     # Category breakdown
     print(f"\n📁 CATEGORY BREAKDOWN")
@@ -200,6 +315,9 @@ def interactive_display(df):
     # Save tables to CSV
     summary.to_csv(OUTPUT_DIR / 'repo_summary.csv', index=False)
     risk_analysis_table(df).to_csv(OUTPUT_DIR / 'risk_analysis.csv', index=False)
+    quality_summary.to_csv(OUTPUT_DIR / 'data_quality_summary.csv', index=False)
+    loc_summary.to_csv(OUTPUT_DIR / 'loc_band_distribution.csv', index=False)
+    churn_summary.to_csv(OUTPUT_DIR / 'churn_distribution.csv', index=False)
     print(f"\n💾 Tables saved to {OUTPUT_DIR}/")
 
 

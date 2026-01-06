@@ -1,5 +1,12 @@
+# Core data + mining
 pandas>=2.0
 pydriller>=2.7
 requests>=2.31
+
+# LLM providers
 openai>=1.35
-google-generativeai>=0.6
+google-generativeai>=0.8.1
+
+# Visualization
+matplotlib>=3.7
+seaborn>=0.13
