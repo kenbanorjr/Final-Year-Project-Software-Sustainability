@@ -9553,3 +9553,283 @@ subpar,runtime/support_test.py,False,"404 models/gemini-pro is not found for API
 subpar,tests/package_a/a.py,False,"404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods."
 subpar,tests/package_import_roots/import_roots.py,False,"404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods."
 subpar,tests/package_pkg_resources/main.py,False,"404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods."
+subpar,compiler/python_archive_test.py,7.0,High,High,"['The project is deprecated and unmaintained.', 'There are no active contributors or updates to the codebase.']","['Deprecated', 'No activity in the last 12 months']","The project is marked as deprecated and unmaintained, with no recent activity. The codebase has not been updated for over a year, indicating high sustainability risk. While the code itself appears to be well-structured and readable, its lack of maintenance makes it risky for future use.",qwen2.5-coder:7b,False,10927,10927,2941,156,True,,"{
+  ""readability_score"": 7,
+  ""maintainability_risk"": ""High"",
+  ""sustainability_risk"": ""High"",
+  ""architectural_issues"": [
+    ""The project is deprecated and unmaintained."",
+    ""There are no active contributors or updates to the codebase.""
+  ],
+  ""sustainability_flags"": [
+    ""Deprecated"",
+    ""No activity in the last 12 months""
+  ],
+  ""reasoning"": ""The project is marked as deprecated and unmaintained, with no recent activity. The codebase has not been updated for over a year, indicating high sustainability risk. While the code itself appears to be well-structured and readable, its lack of maintenance makes it risky for future use.""
+}",2026-01-06T02:02:29.474929+00:00,5c486705da7fece4739015ce566423a8fd89916f,ollama,v1
+subpar,compiler/stored_resource.py,7.0,High,High,"['The project is deprecated and unmaintained.', 'There are no active contributors or updates to the codebase.']","['Deprecated', 'No activity in the last 12 months']","The project is marked as deprecated and has no recent activity, indicating a high risk of sustainability issues. The lack of maintainers and updates also poses a significant maintenance risk.",qwen2.5-coder:7b,False,2402,2402,1134,133,True,,"{
+  ""readability_score"": 7,
+  ""maintainability_risk"": ""High"",
+  ""sustainability_risk"": ""High"",
+  ""architectural_issues"": [
+    ""The project is deprecated and unmaintained."",
+    ""There are no active contributors or updates to the codebase.""
+  ],
+  ""sustainability_flags"": [
+    ""Deprecated"",
+    ""No activity in the last 12 months""
+  ],
+  ""reasoning"": ""The project is marked as deprecated and has no recent activity, indicating a high risk of sustainability issues. The lack of maintainers and updates also poses a significant maintenance risk.""
+}",2026-01-06T02:02:29.474929+00:00,5c486705da7fece4739015ce566423a8fd89916f,ollama,v1
+subpar,compiler/stored_resource_test.py,7.0,High,High,"['The project is deprecated and unmaintained.', 'The codebase has no recent activity or commits.']","['Deprecated', 'No recent updates']","The project is marked as deprecated and unmaintained, with no recent activity or commits. The source code is relatively simple but lacks modern testing practices and documentation. This combination increases both the maintainability risk (due to lack of support) and the sustainability risk (due to potential security vulnerabilities and outdated dependencies).",qwen2.5-coder:7b,False,2344,2344,1144,153,True,,"{
+  ""readability_score"": 7,
+  ""maintainability_risk"": ""High"",
+  ""sustainability_risk"": ""High"",
+  ""architectural_issues"": [
+    ""The project is deprecated and unmaintained."",
+    ""The codebase has no recent activity or commits.""
+  ],
+  ""sustainability_flags"": [
+    ""Deprecated"",
+    ""No recent updates""
+  ],
+  ""reasoning"": ""The project is marked as deprecated and unmaintained, with no recent activity or commits. The source code is relatively simple but lacks modern testing practices and documentation. This combination increases both the maintainability risk (due to lack of support) and the sustainability risk (due to potential security vulnerabilities and outdated dependencies).""
+}",2026-01-06T02:02:29.474929+00:00,5c486705da7fece4739015ce566423a8fd89916f,ollama,v1
+subpar,runtime/support.py,7.0,High,High,"['The code is tightly coupled with specific Python and Bazel functionalities, making it difficult to adapt for other environments.']","['Deprecated project', 'No active maintainers']","The code has a moderate readability score due to its complexity and the use of low-level Python features. However, it carries high maintainability and sustainability risks because the project is deprecated and lacks active maintenance. The code's reliance on specific Bazel functionalities makes it less portable.",qwen2.5-coder:7b,False,11959,11959,3173,148,True,,"{
+  ""readability_score"": 7,
+  ""maintainability_risk"": ""High"",
+  ""sustainability_risk"": ""High"",
+  ""architectural_issues"": [
+    ""The code is tightly coupled with specific Python and Bazel functionalities, making it difficult to adapt for other environments.""
+  ],
+  ""sustainability_flags"": [
+    ""Deprecated project"",
+    ""No active maintainers""
+  ],
+  ""reasoning"": ""The code has a moderate readability score due to its complexity and the use of low-level Python features. However, it carries high maintainability and sustainability risks because the project is deprecated and lacks active maintenance. The code's reliance on specific Bazel functionalities makes it less portable.""
+}",2026-01-06T02:02:29.474929+00:00,5c486705da7fece4739015ce566423a8fd89916f,ollama,v1
+subpar,runtime/support_test.py,8.0,High,High,"['The project is deprecated and unmaintained.', 'The codebase has not been updated in over a year.']","['Deprecated', 'No recent activity']","The project is marked as deprecated and unmaintained, with no recent commits or updates. The code readability is good, but the lack of maintenance and updates poses significant risks to its sustainability.",qwen2.5-coder:7b,False,5917,5917,1866,131,True,,"{
+  ""readability_score"": 8,
+  ""maintainability_risk"": ""High"",
+  ""sustainability_risk"": ""High"",
+  ""architectural_issues"": [
+    ""The project is deprecated and unmaintained."",
+    ""The codebase has not been updated in over a year.""
+  ],
+  ""sustainability_flags"": [
+    ""Deprecated"",
+    ""No recent activity""
+  ],
+  ""reasoning"": ""The project is marked as deprecated and unmaintained, with no recent commits or updates. The code readability is good, but the lack of maintenance and updates poses significant risks to its sustainability.""
+}",2026-01-06T02:02:29.474929+00:00,5c486705da7fece4739015ce566423a8fd89916f,ollama,v1
+subpar,tests/package_a/a.py,7.0,High,High,"['The project is deprecated and unmaintained.', 'There are no active contributors or updates to the repository.']","['Deprecated', 'No activity in the last year']","The project is marked as deprecated and unmaintained, with no recent activity. The code readability is moderate due to its complexity and lack of modern Python practices. The high maintainability and sustainability risks are due to the lack of updates and active development.",qwen2.5-coder:7b,False,2881,2881,1331,145,True,,"{
+  ""readability_score"": 7,
+  ""maintainability_risk"": ""High"",
+  ""sustainability_risk"": ""High"",
+  ""architectural_issues"": [
+    ""The project is deprecated and unmaintained."",
+    ""There are no active contributors or updates to the repository.""
+  ],
+  ""sustainability_flags"": [
+    ""Deprecated"",
+    ""No activity in the last year""
+  ],
+  ""reasoning"": ""The project is marked as deprecated and unmaintained, with no recent activity. The code readability is moderate due to its complexity and lack of modern Python practices. The high maintainability and sustainability risks are due to the lack of updates and active development.""
+}",2026-01-06T02:02:29.474929+00:00,5c486705da7fece4739015ce566423a8fd89916f,ollama,v1
+subpar,tests/package_import_roots/import_roots.py,8.0,High,High,"['The project is deprecated and unmaintained.', 'The code does not follow modern Python practices or standards.']","['Deprecated', 'No active development']","The project is marked as deprecated and unmaintained in the README. The source code lacks modern Python practices, such as type hints, docstrings, and comprehensive testing. Additionally, there are no recent commits or activity, indicating a high risk of sustainability issues.",qwen2.5-coder:7b,False,1573,1573,980,144,True,,"{
+  ""readability_score"": 8,
+  ""maintainability_risk"": ""High"",
+  ""sustainability_risk"": ""High"",
+  ""architectural_issues"": [
+    ""The project is deprecated and unmaintained."",
+    ""The code does not follow modern Python practices or standards.""
+  ],
+  ""sustainability_flags"": [
+    ""Deprecated"",
+    ""No active development""
+  ],
+  ""reasoning"": ""The project is marked as deprecated and unmaintained in the README. The source code lacks modern Python practices, such as type hints, docstrings, and comprehensive testing. Additionally, there are no recent commits or activity, indicating a high risk of sustainability issues.""
+}",2026-01-06T02:02:29.474929+00:00,5c486705da7fece4739015ce566423a8fd89916f,ollama,v1
+subpar,tests/package_pkg_resources/main.py,8.0,High,High,"['The project is deprecated and unmaintained.', 'The code uses outdated practices and libraries.']","['Deprecated', 'Unmaintained']","The project is marked as deprecated and unmaintained in the README. The source code uses outdated practices, such as manually parsing versions with `pkg_resources` instead of using modern tools like `importlib.metadata`. This makes the code difficult to maintain and understand. Additionally, the lack of activity and churn signals further indicate a high risk of sustainability issues.",qwen2.5-coder:7b,False,3904,3904,1526,159,True,,"{
+  ""readability_score"": 8,
+  ""maintainability_risk"": ""High"",
+  ""sustainability_risk"": ""High"",
+  ""architectural_issues"": [
+    ""The project is deprecated and unmaintained."",
+    ""The code uses outdated practices and libraries.""
+  ],
+  ""sustainability_flags"": [
+    ""Deprecated"",
+    ""Unmaintained""
+  ],
+  ""reasoning"": ""The project is marked as deprecated and unmaintained in the README. The source code uses outdated practices, such as manually parsing versions with `pkg_resources` instead of using modern tools like `importlib.metadata`. This makes the code difficult to maintain and understand. Additionally, the lack of activity and churn signals further indicate a high risk of sustainability issues.""
+}",2026-01-06T02:02:29.474929+00:00,5c486705da7fece4739015ce566423a8fd89916f,ollama,v1
+guava,guava/src/com/google/common/base/NullnessCasts.java,8.0,Low,,[],[],"The code is well-documented and follows good Java practices. It has a single author who is the dominant contributor, which reduces the risk of churn. The project has active activity and low churn over the past year, indicating ongoing maintenance and support.",qwen2.5-coder:7b,False,3333,3333,1407,102,True,,"{
+  ""readability_score"": 8,
+  ""maintainability_risk"": ""Low"",
+  ""sustainability_risk"": null,
+  ""architectural_issues"": [],
+  ""sustainability_flags"": [],
+  ""reasoning"": ""The code is well-documented and follows good Java practices. It has a single author who is the dominant contributor, which reduces the risk of churn. The project has active activity and low churn over the past year, indicating ongoing maintenance and support.""
+}",2026-01-06T02:02:29.474929+00:00,a86332829a683cece7fc9e0b33317cdd90367fc6,ollama,v1
+checkstyle,src/main/java/com/puppycrawl/tools/checkstyle/checks/blocks/BlockOption.java,8.0,Low,,[],[],The code is relatively simple and follows a standard Java enum pattern. It has good readability due to clear naming conventions and concise documentation. The lack of complexity and frequent updates suggests low maintenance risk.,qwen2.5-coder:7b,False,1692,1692,1023,91,True,,"{
+  ""readability_score"": 8,
+  ""maintainability_risk"": ""Low"",
+  ""sustainability_risk"": null,
+  ""architectural_issues"": [],
+  ""sustainability_flags"": [],
+  ""reasoning"": ""The code is relatively simple and follows a standard Java enum pattern. It has good readability due to clear naming conventions and concise documentation. The lack of complexity and frequent updates suggests low maintenance risk.""
+}",2026-01-06T02:02:29.474929+00:00,6cf8a4089dfed7f868dbfe53b82f5c759005491d,ollama,v1
+junit5,junit-jupiter-api/src/main/java/org/junit/jupiter/api/MethodOrdererContext.java,8.0,Low,,[],[],"The code is well-structured and follows standard Java conventions. It has a clear interface with descriptive method names and annotations, which makes it easy to understand and maintain. The lack of recent activity or churn suggests that the project is stable and not under heavy development.",qwen2.5-coder:7b,False,1815,1815,1136,105,True,,"{
+  ""readability_score"": 8,
+  ""maintainability_risk"": ""Low"",
+  ""sustainability_risk"": null,
+  ""architectural_issues"": [],
+  ""sustainability_flags"": [],
+  ""reasoning"": ""The code is well-structured and follows standard Java conventions. It has a clear interface with descriptive method names and annotations, which makes it easy to understand and maintain. The lack of recent activity or churn suggests that the project is stable and not under heavy development.""
+}",2026-01-06T02:02:29.474929+00:00,b822a12c0b6491e4aa2ce2642cc677e12b0810a5,ollama,v1
+RxJava,src/test/java/io/reactivex/rxjava3/internal/operators/completable/CompletableTimerTest.java,8.0,Low,,[],[],"The code is well-structured and follows standard Java testing conventions. It uses JUnit for testing and RxJava's testing utilities, which are common in the community. The use of static imports and consistent naming conventions contributes to readability. There are no apparent architectural issues or sustainability flags that would indicate high risk.",qwen2.5-coder:7b,False,2408,2408,1129,114,True,,"{
+  ""readability_score"": 8,
+  ""maintainability_risk"": ""Low"",
+  ""sustainability_risk"": null,
+  ""architectural_issues"": [],
+  ""sustainability_flags"": [],
+  ""reasoning"": ""The code is well-structured and follows standard Java testing conventions. It uses JUnit for testing and RxJava's testing utilities, which are common in the community. The use of static imports and consistent naming conventions contributes to readability. There are no apparent architectural issues or sustainability flags that would indicate high risk.""
+}",2026-01-06T02:02:29.474929+00:00,cba8b1a124c9ccdcc906e4fb320fce5e454d3fa8,ollama,v1
+RxJava,src/main/java/io/reactivex/rxjava3/internal/operators/flowable/FlowableOnBackpressureReduceWith.java,8.0,Low,,[],[],"The code is well-structured and follows standard Java conventions. It has a clear class hierarchy and uses generics effectively. The use of annotations like @NonNull helps in maintaining code clarity and reducing errors. However, the lack of comments and documentation might make it harder for new contributors to understand the purpose of certain parts of the code.",qwen2.5-coder:7b,False,3198,3198,1316,118,True,,"{
+  ""readability_score"": 8,
+  ""maintainability_risk"": ""Low"",
+  ""sustainability_risk"": null,
+  ""architectural_issues"": [],
+  ""sustainability_flags"": [],
+  ""reasoning"": ""The code is well-structured and follows standard Java conventions. It has a clear class hierarchy and uses generics effectively. The use of annotations like @NonNull helps in maintaining code clarity and reducing errors. However, the lack of comments and documentation might make it harder for new contributors to understand the purpose of certain parts of the code.""
+}",2026-01-06T02:02:29.474929+00:00,cba8b1a124c9ccdcc906e4fb320fce5e454d3fa8,ollama,v1
+checkstyle,src/test/resources/com/puppycrawl/tools/checkstyle/filters/suppresswithnearbycommentfilter/InputSuppressWithNearbyCommentFilterUsingVariableMessage.java,5.0,Med,,"['The code uses a mix of inline and block comments for suppressing checks, which can lead to inconsistencies and make the code harder to maintain.']","['Mixed comment styles', 'Potential for confusion']","The source code is difficult to read due to inconsistent use of inline and block comments for suppressing Checkstyle checks. This makes it challenging for future developers to understand and maintain the code, increasing both maintenance risk and sustainability concerns.",qwen2.5-coder:7b,False,3610,3610,1565,134,True,,"{
+  ""readability_score"": 5,
+  ""maintainability_risk"": ""Med"",
+  ""sustainability_risk"": null,
+  ""architectural_issues"": [""The code uses a mix of inline and block comments for suppressing checks, which can lead to inconsistencies and make the code harder to maintain.""],
+  ""sustainability_flags"": [""Mixed comment styles"", ""Potential for confusion""],
+  ""reasoning"": ""The source code is difficult to read due to inconsistent use of inline and block comments for suppressing Checkstyle checks. This makes it challenging for future developers to understand and maintain the code, increasing both maintenance risk and sustainability concerns.""
+}",2026-01-06T02:02:29.474929+00:00,6cf8a4089dfed7f868dbfe53b82f5c759005491d,ollama,v1
+checkstyle,src/test/resources/com/puppycrawl/tools/checkstyle/checks/indentation/indentation/InputIndentationLambda7.java,3.0,High,,"['The code uses a lot of nested lambda expressions and complex logic, which can make it difficult to understand.']",[],"The code has a low readability score due to its complex structure and the use of multiple nested lambda expressions. This could lead to high maintenance risk as changes may introduce bugs or be hard to implement. The project is stagnant, with no recent activity or churn, which suggests that it may not receive updates or improvements in the future.",qwen2.5-coder:7b,False,4539,4539,1425,143,True,,"{
+  ""readability_score"": 3,
+  ""maintainability_risk"": ""High"",
+  ""sustainability_risk"": null,
+  ""architectural_issues"": [
+    ""The code uses a lot of nested lambda expressions and complex logic, which can make it difficult to understand.""
+  ],
+  ""sustainability_flags"": [],
+  ""reasoning"": ""The code has a low readability score due to its complex structure and the use of multiple nested lambda expressions. This could lead to high maintenance risk as changes may introduce bugs or be hard to implement. The project is stagnant, with no recent activity or churn, which suggests that it may not receive updates or improvements in the future.""
+}",2026-01-06T02:02:29.474929+00:00,6cf8a4089dfed7f868dbfe53b82f5c759005491d,ollama,v1
+checkstyle,src/test/resources/com/puppycrawl/tools/checkstyle/checks/regexp/regexp/InputRegexpSemantic8.java,3.0,High,Med,['The code is overly complex and difficult to understand due to its length and repetitive structure.'],"['Long file with many methods and lines of code.', 'Lack of comments or documentation for complex logic.']","The source code is extremely long and repetitive, making it difficult to read and understand. The lack of comments or documentation further complicates maintenance. While the project has a high activity level, the single authorship and lack of contribution from others increases the sustainability risk.",qwen2.5-coder:7b,False,4846,4846,1640,153,True,,"{
+  ""readability_score"": 3,
+  ""maintainability_risk"": ""High"",
+  ""sustainability_risk"": ""Med"",
+  ""architectural_issues"": [
+    ""The code is overly complex and difficult to understand due to its length and repetitive structure.""
+  ],
+  ""sustainability_flags"": [
+    ""Long file with many methods and lines of code."",
+    ""Lack of comments or documentation for complex logic.""
+  ],
+  ""reasoning"": ""The source code is extremely long and repetitive, making it difficult to read and understand. The lack of comments or documentation further complicates maintenance. While the project has a high activity level, the single authorship and lack of contribution from others increases the sustainability risk.""
+}",2026-01-06T02:02:29.474929+00:00,6cf8a4089dfed7f868dbfe53b82f5c759005491d,ollama,v1
+guava,android/guava-tests/test/com/google/common/collect/RegularImmutableTableTest.java,8.0,Low,,[],[],"The code is well-structured and follows best practices, with clear method names and comprehensive test coverage. The use of static imports and the `@GwtCompatible` annotation indicates that this code is likely part of a larger library that needs to be compatible with both Java and GWT environments. The dominance of a single author and low churn suggest that the codebase is relatively stable and well-maintained.",qwen2.5-coder:7b,False,6452,6452,2092,134,True,,"{
+  ""readability_score"": 8,
+  ""maintainability_risk"": ""Low"",
+  ""sustainability_risk"": null,
+  ""architectural_issues"": [],
+  ""sustainability_flags"": [],
+  ""reasoning"": ""The code is well-structured and follows best practices, with clear method names and comprehensive test coverage. The use of static imports and the `@GwtCompatible` annotation indicates that this code is likely part of a larger library that needs to be compatible with both Java and GWT environments. The dominance of a single author and low churn suggest that the codebase is relatively stable and well-maintained.""
+}",2026-01-06T02:02:29.474929+00:00,a86332829a683cece7fc9e0b33317cdd90367fc6,ollama,v1
+mybatis-3,src/test/java/org/apache/ibatis/submitted/null_associations/Bar.java,8.0,Low,,[],[],"The code is straightforward and follows standard Java conventions. It has a clear structure with well-defined methods and fields, which makes it easy to understand and maintain. The lack of complexity and the absence of any architectural issues suggest that the risk of sustainability is minimal.",qwen2.5-coder:7b,False,1428,1428,1011,104,True,,"{
+  ""readability_score"": 8,
+  ""maintainability_risk"": ""Low"",
+  ""sustainability_risk"": null,
+  ""architectural_issues"": [],
+  ""sustainability_flags"": [],
+  ""reasoning"": ""The code is straightforward and follows standard Java conventions. It has a clear structure with well-defined methods and fields, which makes it easy to understand and maintain. The lack of complexity and the absence of any architectural issues suggest that the risk of sustainability is minimal.""
+}",2026-01-06T02:02:29.474929+00:00,b814cbad2eacfa0db29685c642e0ce6ae348c86e,ollama,v1
+java-design-patterns,strangler/src/main/java/com/iluwatar/strangler/OldArithmetic.java,7.0,Med,,"['The class is tightly coupled with the OldSource, which could lead to difficulties in maintenance and testing.']","['Tight coupling', 'Lack of abstraction']","The code has a moderate readability score due to its structure and use of logging. However, it presents a medium maintainability risk because of the tight coupling with OldSource, which could make future changes more complex. The lack of abstraction also poses a challenge for sustainability.",qwen2.5-coder:7b,False,2120,2120,1143,137,True,,"{
+  ""readability_score"": 7,
+  ""maintainability_risk"": ""Med"",
+  ""sustainability_risk"": null,
+  ""architectural_issues"": [""The class is tightly coupled with the OldSource, which could lead to difficulties in maintenance and testing.""],
+  ""sustainability_flags"": [""Tight coupling"", ""Lack of abstraction""],
+  ""reasoning"": ""The code has a moderate readability score due to its structure and use of logging. However, it presents a medium maintainability risk because of the tight coupling with OldSource, which could make future changes more complex. The lack of abstraction also poses a challenge for sustainability.""
+}",2026-01-06T02:02:29.474929+00:00,ede37bd05568b1b8b814d8e9a1d2bbd71d9d615d,ollama,v1
+dropwizard,dropwizard-jetty/src/main/java/io/dropwizard/jetty/setup/ServletEnvironment.java,8.0,Low,,[],[],The code is well-structured and follows good coding practices. It has a clear API with descriptive method names and comprehensive documentation. The use of modern Java features like `jakarta.servlet` and `org.eclipse.jetty.ee10.servlet` indicates that the project is actively maintained and up-to-date.,qwen2.5-coder:7b,False,7844,7844,2198,114,True,,"{
+  ""readability_score"": 8,
+  ""maintainability_risk"": ""Low"",
+  ""sustainability_risk"": null,
+  ""architectural_issues"": [],
+  ""sustainability_flags"": [],
+  ""reasoning"": ""The code is well-structured and follows good coding practices. It has a clear API with descriptive method names and comprehensive documentation. The use of modern Java features like `jakarta.servlet` and `org.eclipse.jetty.ee10.servlet` indicates that the project is actively maintained and up-to-date.""
+}",2026-01-06T02:02:29.474929+00:00,19c8cda97bde3939f0bd7c7b6b2f17d72702856b,ollama,v1
+guava,guava-tests/test/com/google/common/base/StringsTest.java,8.0,Low,,[],[],The code is well-structured and follows best practices for unit testing. It has a good readability score due to clear method names and comprehensive test cases. The maintainability risk is low as the tests are isolated and do not depend on external state. There are no architectural issues or sustainability flags identified.,qwen2.5-coder:7b,False,10811,10811,3465,112,True,,"{
+  ""readability_score"": 8,
+  ""maintainability_risk"": ""Low"",
+  ""sustainability_risk"": null,
+  ""architectural_issues"": [],
+  ""sustainability_flags"": [],
+  ""reasoning"": ""The code is well-structured and follows best practices for unit testing. It has a good readability score due to clear method names and comprehensive test cases. The maintainability risk is low as the tests are isolated and do not depend on external state. There are no architectural issues or sustainability flags identified.""
+}",2026-01-06T02:02:29.474929+00:00,a86332829a683cece7fc9e0b33317cdd90367fc6,ollama,v1
+mybatis-3,src/test/java/org/apache/ibatis/submitted/collection_in_constructor/Store7.java,8.0,Low,,[],[],"The code is well-structured and follows standard Java conventions. It has a clear constructor, getters, and overrides for hashCode, equals, and toString methods. The license header is present, and the file is part of an active project with continuous integration and coverage monitoring.",qwen2.5-coder:7b,False,1850,1850,1113,106,True,,"{
+  ""readability_score"": 8,
+  ""maintainability_risk"": ""Low"",
+  ""sustainability_risk"": null,
+  ""architectural_issues"": [],
+  ""sustainability_flags"": [],
+  ""reasoning"": ""The code is well-structured and follows standard Java conventions. It has a clear constructor, getters, and overrides for hashCode, equals, and toString methods. The license header is present, and the file is part of an active project with continuous integration and coverage monitoring.""
+}",2026-01-06T02:02:29.474929+00:00,b814cbad2eacfa0db29685c642e0ce6ae348c86e,ollama,v1
+checkstyle,src/test/resources/com/puppycrawl/tools/checkstyle/checks/indentation/indentation/InputIndentationLongConcatenatedString7.java,,,,[],[],,qwen2.5-coder:7b,False,11068,11068,4096,381,False,JSON parse failed: Expecting value: line 1 column 1 (char 0),"The provided code snippet is a Java class named `Project` with a single method `main`. The `main` method contains a large string that appears to be a placeholder or a comment. Here's a breakdown of the key points:
+
+1. **Class and Method Declaration**:
+   - The class `Project` is declared.
+   - Inside the class, there is a static method `main` which serves as the entry point for any Java application.
+
+2. **String Placeholder**:
+   - The `main` method contains a single string that spans multiple lines. This string is likely intended to be a placeholder or a comment explaining the purpose of the code.
+   - The string starts with `""Project""` and continues with a series of spaces, which suggests it might be part of a larger template or a comment block.
+
+3. **Indentation**:
+   - The code uses consistent indentation (4 spaces per level) throughout, which is a common practice in Java to improve readability.
+
+Here is the code snippet formatted for clarity:
+
+```java
+public class Project {
+    public static void main(String[] args) {
+        String placeholder = ""Project"" +
+                             ""                                                                 ""; //indent:16 exp:16
+    }
+}
+```
+
+### Analysis:
+- **Purpose**: The purpose of this code is unclear from the provided snippet alone. It appears to be a template or a comment block that might be used in larger projects.
+- **Formatting**: The use of spaces for indentation and the continuation of the string on multiple lines suggests that this might be part of a larger system where such formatting is standardized.
+
+### Conclusion:
+The code snippet is a simple Java class with a single method containing a large string placeholder. It uses consistent indentation to improve readability, which is a common practice in Java development. The exact purpose of this code remains unclear without additional context or information from the surrounding project.",2026-01-06T02:02:29.474929+00:00,6cf8a4089dfed7f868dbfe53b82f5c759005491d,ollama,v1
+guava,android/guava/src/com/google/common/util/concurrent/ImmediateFuture.java,8.0,Low,Med,"['The class is not final, which could lead to issues with mocking or subclassing.']",['TODO(cpovirk): Make this final (but that may break Mockito spy calls).'],"The code is generally well-structured and follows good Java practices. It has a clear license, documentation, and adherence to the Apache License. The use of static methods for creating instances (`NULL`, `ImmediateFailedFuture`, `ImmediateCancelledFuture`) suggests a utility class pattern, which is appropriate for this type of functionality. However, the lack of finality could pose risks if subclassing or mocking is required in the future.",qwen2.5-coder:7b,False,3512,3512,1365,182,True,,"{
+  ""readability_score"": 8,
+  ""maintainability_risk"": ""Low"",
+  ""sustainability_risk"": ""Med"",
+  ""architectural_issues"": [
+    ""The class is not final, which could lead to issues with mocking or subclassing.""
+  ],
+  ""sustainability_flags"": [
+    ""TODO(cpovirk): Make this final (but that may break Mockito spy calls).""
+  ],
+  ""reasoning"": ""The code is generally well-structured and follows good Java practices. It has a clear license, documentation, and adherence to the Apache License. The use of static methods for creating instances (`NULL`, `ImmediateFailedFuture`, `ImmediateCancelledFuture`) suggests a utility class pattern, which is appropriate for this type of functionality. However, the lack of finality could pose risks if subclassing or mocking is required in the future.""
+}",2026-01-06T02:02:29.474929+00:00,a86332829a683cece7fc9e0b33317cdd90367fc6,ollama,v1
+RxJava,src/test/java/io/reactivex/rxjava3/internal/operators/single/SingleMergeArrayTest.java,8.0,Low,,[],[],"The code is well-structured and follows standard Java testing conventions. It has a clear structure with separate test methods for different scenarios, making it easy to understand and maintain.",qwen2.5-coder:7b,False,1609,1609,1055,87,True,,"{
+  ""readability_score"": 8,
+  ""maintainability_risk"": ""Low"",
+  ""sustainability_risk"": null,
+  ""architectural_issues"": [],
+  ""sustainability_flags"": [],
+  ""reasoning"": ""The code is well-structured and follows standard Java testing conventions. It has a clear structure with separate test methods for different scenarios, making it easy to understand and maintain.""
+}",2026-01-06T02:02:29.474929+00:00,cba8b1a124c9ccdcc906e4fb320fce5e454d3fa8,ollama,v1

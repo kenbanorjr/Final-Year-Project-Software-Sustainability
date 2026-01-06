@@ -53,3 +53,8 @@ env.ps1
 env.sh
 configs/env.ps1
 configs/env.sh
+
+# Pipeline outputs/logs (avoid committing unless publishing results)
+*.csv
+data/results/visualizations/
+sonar_runner.log
