@@ -29,8 +29,8 @@ python visualizations/visualize_sonar_metrics.py
 
 ## Configuration
 
-All configuration lives in `config.py` and environment variables.
-Sample environment templates live in `env.ps1.example` and `env.sh.example`.
+All configuration lives in `configs/config.py` and environment variables.
+Sample environment templates live in `configs/env.ps1.example` and `configs/env.sh.example`.
 
 Required environment variables:
 
@@ -58,7 +58,7 @@ Other key env vars:
 - `LLM_SORT_OUTPUT` (optional; default `true`, sort output by repo/file_path)
 - Optional: `LLM_MAX_TOKENS`, `SONAR_SCANNER`
 
-Repository lists (ACTIVE/STAGNANT) are defined in `config.py`. These user-provided
+Repository lists (ACTIVE/STAGNANT) are defined in `configs/config.py`. These user-provided
 labels are stored as `seed_category` and are not used as ground truth. The pipeline
 computes `activity_label` from mined activity (repo commits and unique authors) and
 uses it in analysis for reproducibility.

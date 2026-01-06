@@ -16,7 +16,7 @@ from typing import Iterable, List
 import pandas as pd
 import requests
 
-import config
+from configs import config
 
 SONAR_METRICS = (
     "complexity",

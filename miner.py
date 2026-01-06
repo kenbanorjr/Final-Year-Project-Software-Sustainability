@@ -2,7 +2,7 @@
 Git mining engine for the sustainability study.
 
 Responsibilities:
-- Clone repositories defined in config.py.
+- Clone repositories defined in configs/config.py.
 - Identify representative files (Python/Java, 50–400 LOC).
 - Compute churn and bus-factor indicators over the last 12 months.
 """
@@ -18,7 +18,7 @@ from typing import Dict, Iterable, List, Tuple
 import pandas as pd
 from pydriller import Repository
 
-import config
+from configs import config
 
 REPRESENTATIVE_EXTENSIONS = {".py", ".java", ".go", ".js", ".ts"}
 EXTENSION_LANGUAGE = {

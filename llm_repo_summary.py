@@ -11,7 +11,7 @@ from typing import Iterable
 
 import pandas as pd
 
-import config
+from configs import config
 
 RESULTS_DIR = config.RESULTS_DIR
 LLM_METRICS_PATH = RESULTS_DIR / "llm_metrics.csv"

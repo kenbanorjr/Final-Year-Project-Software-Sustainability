@@ -16,11 +16,12 @@ from pathlib import Path
 
 import pandas as pd
 
-import config
+from configs import config
 import llm_judge
 import llm_repo_summary
 import miner
 import sonar_runner
+import validate_outputs
 
 
 def _repo_paths() -> list[Path]:
@@ -111,8 +112,6 @@ def main(argv: list[str] | None = None) -> None:
         llm_repo_summary.run_repo_summaries()
     if config.VALIDATE_OUTPUTS:
         print("[main] Step 7: validate outputs")
-        import validate_outputs
-
         validate_outputs.run_validation()
 
 

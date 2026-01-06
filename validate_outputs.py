@@ -12,7 +12,7 @@ from typing import Iterable
 
 import pandas as pd
 
-import config
+from configs import config
 
 RESULTS_DIR = config.RESULTS_DIR
 REPORT_PATH = RESULTS_DIR / "validate_report.json"

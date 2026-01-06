@@ -16,7 +16,7 @@ from typing import Dict, Iterable, List, Tuple
 
 import pandas as pd
 
-import config
+from configs import config
 
 SYSTEM_PROMPT = """
 You are evaluating code maintainability and sustainability risk for a research study.
