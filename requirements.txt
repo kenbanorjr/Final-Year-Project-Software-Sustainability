@@ -1,11 +1,12 @@
 # Core data + mining
 pandas>=2.0
+numpy>=1.24
 pydriller>=2.7
 requests>=2.31
+scipy>=1.10
+scikit-learn>=1.3
 
-# LLM providers
-openai>=1.35
-google-generativeai>=0.8.1
+# LLM client
 
 # Visualization
 matplotlib>=3.7

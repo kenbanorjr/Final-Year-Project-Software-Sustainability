@@ -1,0 +1,25 @@
+Software Sustainability Evaluation Pipeline - Requirements
+
+Hardware
+- CPU: 4+ cores recommended (git mining and Sonar scans are CPU-heavy).
+- Memory: 8 GB minimum, 16 GB recommended for larger repos.
+- Storage: 5-20 GB free depending on number/size of cloned repos and outputs.
+
+Operating system
+- Windows 10/11, macOS 12+, or Linux (Ubuntu 20.04+ recommended).
+
+Software dependencies
+- Python 3.10+.
+- Git (for cloning repositories).
+- SonarQube server (local or remote) and sonar-scanner on PATH.
+  - Optional: run SonarQube via Docker if preferred.
+- LLM provider access (local server or hosted endpoint).
+
+Python packages
+- See requirements.txt for pinned/compatible versions.
+
+Network requirements
+- Outbound HTTPS for cloning repositories and calling LLM/Sonar APIs.
+
+Notes
+- For reproducibility, record the repo HEAD SHA and analysis timestamp in outputs.

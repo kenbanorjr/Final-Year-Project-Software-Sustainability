@@ -1,0 +1,56 @@
+Software Sustainability Evaluation Pipeline - Replication Guide
+
+Purpose
+Reproduce datasets and analysis artifacts from the study using the same repository
+cohort and environment settings.
+
+Data provenance and ethics
+- Inputs are public open-source repositories configured in `pipeline/configs/config.py`.
+- The pipeline analyzes source code and git history.
+- No private data is intentionally collected.
+- Respect upstream repository licenses and terms.
+
+Reproduction steps (end-to-end)
+1) Configure environment variables
+   - Edit `configs/env.ps1` (PowerShell) or `configs/env.sh` (Bash).
+   - Set:
+     SONAR_HOST_URL, SONAR_TOKEN
+     LLM_PROVIDER, LLM_MODEL, LLM_BASE_URL
+     LLM_API_KEY (for hosted APIs)
+
+2) Optional clean rerun
+   - Remove previous outputs in `data/results/`.
+
+3) Run the core pipeline
+   python -m pipeline.main
+
+4) Optional validation
+   - Set `VALIDATE_OUTPUTS=true` before running, or run:
+     python -m pipeline.validate_outputs
+
+5) Optional repo-level summary
+   python -m pipeline.llm_repo_summary
+
+6) Optional research analyses
+   python -m analysis.rq_process_sustainability
+   python -m analysis.rq_visualizations
+   python -m analysis.rq1_analysis.scripts.rq1_full_analysis
+
+Core outputs
+- data/results/git/git_metrics.csv
+- data/results/sonar/sonar_metrics.csv
+- data/results/llm/llm_metrics_<model>_runNNN.csv
+- data/results/merged/final_dataset.csv
+
+Optional outputs
+- data/results/llm/llm_repo_summary.csv
+- data/results/validation/validate_report.json
+- data/results/holistic/holistic_assessments_<model>_runNNN.csv
+- analysis/rq1_analysis/figures/*.png
+- analysis/rq1_analysis/tables/*.csv
+- analysis/rq2_analysis/figures/*.png
+
+Reproducibility notes
+- Git metrics are deterministic for a fixed repo HEAD and time window.
+- Outputs include timestamp and commit metadata for traceability.
+- LLM outputs are stochastic; use same model/version and prompts to reduce variance.

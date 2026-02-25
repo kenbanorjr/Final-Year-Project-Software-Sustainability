@@ -11,13 +11,13 @@ from typing import Iterable
 
 import pandas as pd
 
-from configs import config
+from pipeline.configs import config
 
 RESULTS_DIR = config.RESULTS_DIR
-LLM_METRICS_PATH = RESULTS_DIR / "llm_metrics.csv"
-GIT_METRICS_PATH = RESULTS_DIR / "git_metrics.csv"
-SONAR_METRICS_PATH = RESULTS_DIR / "sonar_metrics.csv"
-OUTPUT_PATH = RESULTS_DIR / "llm_repo_summary.csv"
+LLM_METRICS_PATH = config.llm_metrics_path(prefer_existing=True)
+GIT_METRICS_PATH = config.git_metrics_path()
+SONAR_METRICS_PATH = config.sonar_metrics_path()
+OUTPUT_PATH = config.llm_repo_summary_path()
 
 
 def _load_metrics(path: Path, required: Iterable[str] | None = None) -> pd.DataFrame:
@@ -59,13 +59,16 @@ def _normalize_git_df(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
     df = df.copy()
-    if "seed_category" not in df.columns and "category" in df.columns:
-        df["seed_category"] = df["category"]
     for col in ("churn_12m", "dominant_author_share", "unique_authors_12m"):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
-    if "bus_factor_single_dev" in df.columns:
-        df["bus_factor_single_dev"] = df["bus_factor_single_dev"].astype(str).str.lower().isin(
+    if "single_contributor_12m" not in df.columns:
+        if "single_author_touch_12m" in df.columns:
+            df["single_contributor_12m"] = df["single_author_touch_12m"]
+        elif "bus_factor_single_dev" in df.columns:
+            df["single_contributor_12m"] = df["bus_factor_single_dev"]
+    if "single_contributor_12m" in df.columns:
+        df["single_contributor_12m"] = df["single_contributor_12m"].astype(str).str.lower().isin(
             {"true", "1", "yes"}
         )
     if "repo" not in df.columns:
@@ -123,13 +126,11 @@ def _aggregate_repo(repo: str, llm_df: pd.DataFrame, git_df: pd.DataFrame, sonar
         (high_count / llm_files) * 100.0 if llm_files else None
     )
 
-    bus_factor_rate = None
-    if not repo_git.empty and "bus_factor_single_dev" in repo_git.columns:
-        bus_factor_rate = repo_git["bus_factor_single_dev"].astype(float).mean()
-        if pd.isna(bus_factor_rate):
-            bus_factor_rate = None
-
-    seed_source = repo_git["seed_category"] if "seed_category" in repo_git.columns else repo_git.get("category")
+    single_contributor_rate = None
+    if not repo_git.empty and "single_contributor_12m" in repo_git.columns:
+        single_contributor_rate = repo_git["single_contributor_12m"].astype(float).mean()
+        if pd.isna(single_contributor_rate):
+            single_contributor_rate = None
 
     return {
         "repo": repo,
@@ -141,9 +142,8 @@ def _aggregate_repo(repo: str, llm_df: pd.DataFrame, git_df: pd.DataFrame, sonar
         "mean_churn_12m": _mean_value(repo_git, "churn_12m"),
         "mean_unique_authors_12m": _mean_value(repo_git, "unique_authors_12m"),
         "dominant_author_share_mean": _mean_value(repo_git, "dominant_author_share"),
-        "bus_factor_single_dev_rate": bus_factor_rate,
+        "single_contributor_12m_rate": single_contributor_rate,
         "activity_label": _most_common(repo_git.get("activity_label")),
-        "seed_category": _most_common(seed_source),
     }
 
 
@@ -168,7 +168,7 @@ def _repo_summary(row: pd.Series, thresholds: dict[str, float | None]) -> str:
         for col in (
             "maintainability_risk_high_pct",
             "mean_sonar_sqale_index",
-            "bus_factor_single_dev_rate",
+            "single_contributor_12m_rate",
         )
     ):
         return "Insufficient data"
@@ -176,7 +176,7 @@ def _repo_summary(row: pd.Series, thresholds: dict[str, float | None]) -> str:
     high_llm = is_high(row.get("maintainability_risk_high_pct"), thresholds.get("llm_risk"))
     high_debt = is_high(row.get("mean_sonar_sqale_index"), thresholds.get("sqale"))
     high_complexity = is_high(row.get("mean_sonar_complexity"), thresholds.get("complexity"))
-    bus_factor_rate = row.get("bus_factor_single_dev_rate") or 0.0
+    bus_factor_rate = row.get("single_contributor_12m_rate") or 0.0
     dominant_share = row.get("dominant_author_share_mean") or 0.0
     high_bus_factor = bus_factor_rate >= 0.5 or dominant_share >= 0.75
 

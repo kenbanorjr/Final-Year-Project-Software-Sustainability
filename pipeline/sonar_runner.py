@@ -10,13 +10,15 @@ from __future__ import annotations
 import math
 import os
 import subprocess
+import time
 from pathlib import Path
 from typing import Iterable, List
 
 import pandas as pd
 import requests
 
-from configs import config
+from pipeline.configs import config
+from pipeline.configs.general_repo_filter import SONAR_EXCLUSIONS, SONAR_INCLUSIONS
 
 SONAR_METRICS = (
     "complexity",
@@ -33,8 +35,21 @@ SONAR_METRICS = (
     "vulnerabilities",
     "duplicated_blocks",
     "duplicated_lines_density",
-    "test_success_density",
+    # NOTE: test_success_density removed - not available at file level in SonarQube
 )
+
+# Sparse metrics where SonarQube omits zeros (null = 0)
+# For these, we create has_<metric> presence flags and fill nulls with 0
+SPARSE_SONAR_COLUMNS = [
+    "sonar_violations",
+    "sonar_code_smells",
+    "sonar_sqale_index",
+    "sonar_bugs",
+    "sonar_vulnerabilities",
+    "sonar_duplicated_blocks",
+    "sonar_duplicated_lines_density",
+    "sonar_cognitive_complexity",
+]
 
 # Folders Sonar expects for Java bytecode (created if missing).
 JAVA_BIN_DIRS = (
@@ -69,6 +84,8 @@ def run_sonar_scan(repo_path: Path, project_key: str) -> None:
         f"-Dsonar.projectKey={project_key}",
         f"-Dsonar.projectName={repo_path.name}",
         f"-Dsonar.sources=.",
+        f"-Dsonar.inclusions={','.join(SONAR_INCLUSIONS)}",
+        f"-Dsonar.exclusions={','.join(SONAR_EXCLUSIONS)}",
         f"-Dsonar.host.url={config.SONAR_HOST_URL}",
         "-Dsonar.sourceEncoding=UTF-8",
     ]
@@ -89,6 +106,32 @@ def _request_session() -> requests.Session:
     if config.SONAR_TOKEN:
         session.auth = (config.SONAR_TOKEN, "")
     return session
+
+
+def _wait_for_ce_task(project_key: str, session: requests.Session, timeout_s: int = 300) -> bool:
+    """Wait for SonarQube compute engine to finish processing a project."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        resp = session.get(
+            f"{config.SONAR_HOST_URL}/api/ce/component",
+            params={"component": project_key},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        payload = resp.json() or {}
+        current = payload.get("current") or {}
+        status = current.get("status")
+        queue = payload.get("queue") or []
+        if status == "SUCCESS":
+            return True
+        if status in {"FAILED", "CANCELED"}:
+            print(f"[sonar] Compute engine status {status} for {project_key}")
+            return False
+        if not status and not queue:
+            return True
+        time.sleep(5)
+    print(f"[sonar] Timed out waiting for compute engine for {project_key}")
+    return False
 
 
 def fetch_file_metrics(project_key: str) -> List[dict]:
@@ -140,7 +183,6 @@ def fetch_file_metrics(project_key: str) -> List[dict]:
                     "sonar_vulnerabilities": measures.get("vulnerabilities"),
                     "sonar_duplicated_blocks": measures.get("duplicated_blocks"),
                     "sonar_duplicated_lines_density": measures.get("duplicated_lines_density"),
-                    "sonar_test_success_density": measures.get("test_success_density"),
                 }
             )
 
@@ -151,7 +193,8 @@ def fetch_file_metrics(project_key: str) -> List[dict]:
 
 def collect_sonar_metrics(repo_paths: Iterable[Path], output_path: Path | None = None) -> Path:
     """Run scans and collect per-file metrics for the provided repositories."""
-    output = output_path or (config.RESULTS_DIR / "sonar_metrics.csv")
+    output = output_path or config.sonar_metrics_path()
+    output.parent.mkdir(parents=True, exist_ok=True)
     all_rows: List[dict] = []
 
     for repo_path in repo_paths:
@@ -163,8 +206,10 @@ def collect_sonar_metrics(repo_paths: Iterable[Path], output_path: Path | None =
         analysis_date_utc = config.now_utc_iso()
         repo_head_sha = config.git_head_sha(repo_path)
         sonar_host_url = config.SONAR_HOST_URL
+        session = _request_session()
         try:
             run_sonar_scan(repo_path, project_key)
+            _wait_for_ce_task(project_key, session)
             print(f"[sonar] Fetching metrics for {project_key}")
             rows = fetch_file_metrics(project_key)
             for row in rows:
@@ -181,6 +226,19 @@ def collect_sonar_metrics(repo_paths: Iterable[Path], output_path: Path | None =
     df = pd.DataFrame(all_rows)
     if not df.empty:
         df.sort_values(["repo", "file_path"], inplace=True)
+        
+        # Handle sparse metrics: SonarQube omits zeros, so null = 0
+        # Create presence flags before filling nulls
+        for col in SPARSE_SONAR_COLUMNS:
+            if col in df.columns:
+                flag_col = f"has_{col.replace('sonar_', '')}"
+                df[flag_col] = df[col].notna().astype(int)
+                df[col] = df[col].fillna(0.0)
+    
+    archived = config.archive_existing_csv(output)
+    if archived:
+        print(f"[sonar] Archived previous Sonar metrics to {archived}")
+
     df.to_csv(output, index=False)
     print(f"[sonar] Wrote SonarQube metrics to {output}")
     return output

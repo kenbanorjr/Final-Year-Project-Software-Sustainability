@@ -3,9 +3,9 @@ Orchestrator for the sustainability evaluation pipeline.
 
 Steps:
 1. Clone repositories.
-2. Mine git history for churn/bus-factor on representative files.
-3. Run SonarQube scans and collect baseline metrics.
-4. Run the LLM judge on representative files.
+2. Run SonarQube scans and collect baseline metrics.
+3. Mine git history for churn/bus-factor on representative files.
+4. Run the LLM judge (code-only, Sonar file list).
 5. Merge outputs into final_dataset.csv.
 """
 
@@ -16,12 +16,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from configs import config
-import llm_judge
-import llm_repo_summary
-import miner
-import sonar_runner
-import validate_outputs
+from pipeline import clone_repos
+from pipeline import llm_judge
+from pipeline import llm_repo_summary
+from pipeline import miner
+from pipeline import sonar_runner
+from pipeline import validate_outputs
+from pipeline.configs import config
 
 
 def _repo_paths() -> list[Path]:
@@ -57,11 +58,13 @@ def merge_outputs(
     sonar_df = _safe_read_csv(sonar_metrics_csv)
     llm_df = _safe_read_csv(llm_metrics_csv)
 
-    if "seed_category" not in git_df.columns and "category" in git_df.columns:
-        git_df = git_df.rename(columns={"category": "seed_category"})
-
-    merged = git_df
-    if not sonar_df.empty:
+    merged = sonar_df if not sonar_df.empty else git_df
+    if merged.empty:
+        merged = git_df
+    if merged is sonar_df and not git_df.empty:
+        git_df = _drop_overlapping_columns(git_df, set(merged.columns))
+        merged = merged.merge(git_df, on=["repo", "file_path"], how="left")
+    elif merged is git_df and not sonar_df.empty:
         sonar_df = _drop_overlapping_columns(sonar_df, set(merged.columns))
         merged = merged.merge(sonar_df, on=["repo", "file_path"], how="left")
     if not llm_df.empty:
@@ -88,24 +91,24 @@ def main(argv: list[str] | None = None) -> None:
     config.ensure_data_dirs()
 
     print("[main] Step 1: clone repositories")
-    miner.clone_repositories(config.ALL_REPOSITORIES)
+    clone_repos.clone_all_repos()
 
-    print("[main] Step 2: git mining")
-    git_metrics_csv = miner.run_git_mining()
-
-    print("[main] Step 3: SonarQube baseline")
+    print("[main] Step 2: SonarQube baseline")
     repo_paths = _repo_paths()
     sonar_metrics_csv = sonar_runner.collect_sonar_metrics(repo_paths)
 
-    print("[main] Step 4: LLM judge")
-    llm_metrics_csv = llm_judge.run_llm_judge(git_metrics_csv)
+    print("[main] Step 3: git mining")
+    git_metrics_csv = miner.run_git_mining()
+
+    print("[main] Step 4: LLM judge (code-only, full Sonar file list)")
+    llm_metrics_csv = llm_judge.run_llm_judge(sonar_metrics_csv)
 
     print("[main] Step 5: merge datasets")
     merge_outputs(
         git_metrics_csv=git_metrics_csv,
         sonar_metrics_csv=sonar_metrics_csv,
         llm_metrics_csv=llm_metrics_csv,
-        output_path=config.RESULTS_DIR / "final_dataset.csv",
+        output_path=config.final_dataset_path(),
     )
     if args.with_repo_summary:
         print("[main] Step 6: repo summary")

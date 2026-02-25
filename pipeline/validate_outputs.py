@@ -12,20 +12,22 @@ from typing import Iterable
 
 import pandas as pd
 
-from configs import config
+from pipeline.configs import config
 
 RESULTS_DIR = config.RESULTS_DIR
-REPORT_PATH = RESULTS_DIR / "validate_report.json"
+REPORT_PATH = config.validate_report_path()
+LLM_METRICS_PATH = config.llm_metrics_path(prefer_existing=True)
+LLM_METRICS_NAME = LLM_METRICS_PATH.name
 
 FILES = {
-    "git_metrics.csv": RESULTS_DIR / "git_metrics.csv",
-    "sonar_metrics.csv": RESULTS_DIR / "sonar_metrics.csv",
-    "llm_metrics.csv": RESULTS_DIR / "llm_metrics.csv",
+    "git_metrics.csv": config.git_metrics_path(),
+    "sonar_metrics.csv": config.sonar_metrics_path(),
+    LLM_METRICS_NAME: LLM_METRICS_PATH,
 }
 
 REQUIRED_COLUMNS = {
     "git_metrics.csv": {"repo", "file_path", "absolute_path"},
-    "llm_metrics.csv": {"repo", "file_path", "readability_score", "maintainability_risk"},
+    LLM_METRICS_NAME: {"repo", "file_path", "readability_score", "maintainability_risk"},
 }
 SONAR_KEY_COLUMNS = {"project_key", "sonar_project_key"}
 
@@ -150,7 +152,7 @@ def run_validation(output_path: Path | None = None) -> Path:
 
         git_df = dataframes["git_metrics.csv"]
         sonar_df = dataframes["sonar_metrics.csv"]
-        llm_df = dataframes["llm_metrics.csv"]
+        llm_df = dataframes[LLM_METRICS_NAME]
 
         coverage_git_sonar = _join_coverage(git_df, sonar_df)
         coverage_git_llm = _join_coverage(git_df, llm_df)
@@ -163,7 +165,7 @@ def run_validation(output_path: Path | None = None) -> Path:
         report["duplicates"] = {
             "git_metrics.csv": _duplicate_stats(git_df),
             "sonar_metrics.csv": _duplicate_stats(sonar_df),
-            "llm_metrics.csv": _duplicate_stats(llm_df),
+            LLM_METRICS_NAME: _duplicate_stats(llm_df),
         }
         report["unmatched_examples"] = {
             "git_missing_in_sonar": _unmatched_examples(git_df, sonar_df),
