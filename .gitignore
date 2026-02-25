@@ -61,3 +61,6 @@ ui/
 # Real env files (contain secrets — use env.sh.example / env.ps1.example as templates)
 configs/env.ps1
 configs/env.sh
+
+# Local Claude Code guidance (not for public repo)
+CLAUDE.md
