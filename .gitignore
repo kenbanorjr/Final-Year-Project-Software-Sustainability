@@ -64,3 +64,4 @@ configs/env.sh
 
 # Local Claude Code guidance (not for public repo)
 CLAUDE.md
+.claude/

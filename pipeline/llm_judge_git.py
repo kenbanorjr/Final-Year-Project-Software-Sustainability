@@ -1,25 +1,21 @@
 """
-LLM-based Code Quality Assessor for Research Comparison with SonarQube.
+Git-Augmented LLM-based Code Quality Assessor.
 
-This module implements an LLM-based "augmented reviewer" that evaluates source
-code files to produce metrics comparable to SonarQube's static analysis. It is
-designed for research comparing human-like LLM assessments against traditional
-static analysis tools.
+This module extends the LLM judge approach from ``llm_judge.py`` by also
+feeding the LLM each file's git history metrics (churn, bus-factor, recency,
+contributor concentration, etc.).  The model can then factor code-evolution
+context into its quality assessment alongside the source code itself.
 
-Design Constraints:
-- LLM context window: 4096 tokens (~16KB of text)
-- Output: Structured JSON matching SonarQube metric categories
-- Reproducibility: Deterministic prompts with version tracking
+Key differences from ``llm_judge.py``:
+- Input file list comes from ``git_metrics.csv`` (only files with git data).
+- Each prompt includes a structured block of git history metrics.
+- System prompt contains additional guidance on interpreting git signals.
+- Output written to ``llm_git_metrics_<model>_runNNN.csv``.
+- A separate parse-failure log is used (``llm_git_parse_failures.jsonl``).
 
-Research Context:
-This tool is part of a study comparing three evaluation dimensions:
-1. Git mining (churn, bus-factor) - historical sustainability indicators
-2. SonarQube baseline (static analysis) - traditional tool-based metrics
-3. LLM assessment (this module) - cognitive/semantic code evaluation
-
-The LLM provides complementary insights that static analysis cannot capture,
-such as semantic understanding of code intent, architectural coherence, and
-context-aware complexity assessment.
+The output CSV schema is identical to the code-only judge (all ``llm_*`` prefixed
+columns) plus an ``llm_git_augmented`` flag, ensuring merge compatibility with
+the rest of the pipeline.
 """
 
 from __future__ import annotations
@@ -37,8 +33,8 @@ from typing import Any
 import pandas as pd
 
 from pipeline.configs import config
-from pipeline.utils import detect_language, LLMClient, LLMError
 from pipeline.configs.general_repo_filter import included_extensions, is_excluded_path, is_included_path
+from pipeline.utils import detect_language, LLMClient, LLMError
 
 # ============================================================================
 # LOGGING CONFIGURATION
@@ -47,43 +43,54 @@ from pipeline.configs.general_repo_filter import included_extensions, is_exclude
 logger = logging.getLogger(__name__)
 
 # Path to store raw responses for parse failures (append-only JSONL)
-PARSE_FAILURE_LOG = config.llm_parse_failures_path()
+PARSE_FAILURE_LOG = config.llm_git_parse_failures_path()
 
 # ============================================================================
-# CONSTANTS - DOCUMENTED WITH RATIONALE
+# CONSTANTS – same budget as the code-only judge
 # ============================================================================
 
-# Token budget for LLM operations
-# Rationale: leave room for prompt + response; tune per model context window.
-# Set to None to disable truncation.
 MAX_CODE_CHARS = 20000
 MAX_RESPONSE_TOKENS = 1000
 PROMPT_TOKENS_ESTIMATE = 600
 
-# Truncation strategy: prioritize file head (imports, class definitions)
-# with smaller tail sample for completeness checks
 HEAD_CHARS = 16000
 TAIL_CHARS = 4000
 
-# File analysis constraints (empty file check only)
 MAX_FILE_SIZE_KB = 500
 MIN_FILE_SIZE_BYTES = 10
 
-# Analyzable source code extensions aligned with Sonar filters.
 ANALYZABLE_EXTENSIONS = included_extensions()
 
+# Git metric columns to inject into the prompt (order matters for readability).
+GIT_PROMPT_FIELDS: list[tuple[str, str]] = [
+    ("churn_12m", "Code churn (lines added + deleted, 12 months)"),
+    ("added_lines_12m", "Lines added (12 months)"),
+    ("deleted_lines_12m", "Lines deleted (12 months)"),
+    ("unique_authors_12m", "Unique authors (12 months)"),
+    ("dominant_author", "Dominant author"),
+    ("dominant_author_share", "Dominant author share (0-1)"),
+    ("single_contributor_12m", "Single contributor (12 months)"),
+    ("knowledge_concentration_flag_75", "Knowledge concentration flag (≥75 %)"),
+    ("bus_factor_estimate", "Bus factor estimate"),
+    ("commit_count_12m", "Commits (12 months)"),
+    ("recency_days", "Days since last commit"),
+    ("file_age_days", "File age (days)"),
+    ("git_metrics_status", "Git metrics status"),
+]
+
 
 # ============================================================================
-# SYSTEM PROMPT - RESEARCH-GRADE ASSESSMENT RUBRIC
+# SYSTEM PROMPT – GIT-AUGMENTED ASSESSMENT RUBRIC
 # ============================================================================
 
-SYSTEM_PROMPT = """You are a code quality assessor for a research study comparing LLM-based evaluation against SonarQube static analysis. Your task is to analyze source code and produce structured metrics that can be empirically compared with SonarQube outputs.
+SYSTEM_PROMPT = """You are a code quality assessor for a research study comparing LLM-based evaluation against SonarQube static analysis. Your task is to analyze source code *together with git history metrics* and produce structured metrics that can be empirically compared with SonarQube outputs.
 
 CRITICAL INSTRUCTIONS:
-1. Analyze ONLY the provided source code - do not assume external context
-2. Provide numeric scores following the exact rubrics below
-3. Return ONLY valid JSON - no markdown, no explanations outside the JSON structure
-4. Be consistent and calibrated - similar code quality should yield similar scores
+1. Analyze ONLY the provided source code and git metrics - do not assume external context
+2. Use the git history metrics to *inform* your assessment (see GIT METRICS GUIDANCE below)
+3. Provide numeric scores following the exact rubrics below
+4. Return ONLY valid JSON - no markdown, no explanations outside the JSON structure
+5. Be consistent and calibrated - similar code quality should yield similar scores
 
 OUTPUT SCHEMA (return exactly this structure):
 {
@@ -145,6 +152,8 @@ Identify instances of:
 4 (D): Technical debt ratio 20-50%, significant refactoring needed
 5 (E): Technical debt ratio >50%, major rewrite may be needed
 
+When git metrics show high churn combined with knowledge concentration or a low bus factor, consider nudging the maintainability rating upward (worse) because the code is harder to maintain *in practice* even if the code structure itself is clean.
+
 ## Technical Debt Minutes
 Estimate time to fix all identified issues:
 - Simple smell: 5-15 minutes
@@ -184,16 +193,29 @@ Count security concerns:
 0.7-0.8: Good confidence (clear patterns, standard code)
 0.9-1.0: High confidence (straightforward, complete visibility)
 
+If git metrics are unavailable (status "missing"), reduce your confidence slightly since you lack the code-evolution context.
+
 CALIBRATION NOTES:
 - For truncated files, extrapolate proportionally but reduce confidence
 - Empty or near-empty files: minimal complexity, high maintainability
 - Configuration files: typically low complexity unless procedural
 - Be conservative with security/reliability issues - only flag clear patterns
+
+GIT METRICS GUIDANCE:
+You will receive a block of git history metrics for the file being analyzed.
+Use them as *contextual signals* that complement your code-level analysis:
+- High churn (many lines added/deleted) may indicate unstable or frequently patched code – look more closely for complexity and debt.
+- A single contributor or high knowledge concentration increases maintenance risk (bus factor concern).
+- Low bus factor (≤2) suggests the file's knowledge is concentrated in very few people.
+- High recency_days (>180) may mean the code is stale and could hide latent issues no one has addressed.
+- A young file (low file_age_days) with many commits may still be in active development – be lenient on structure.
+- If git_metrics_status is "missing", ignore git signals and rely solely on the code.
+These signals should influence your *summary*, *primary_concerns*, *assessment_confidence*, and – where relevant – *maintainability_rating* and *technical_debt_minutes*.  They should NOT change raw code metrics such as cyclomatic_complexity or lines_of_code, which must be derived from the source code alone.
 """.strip()
 
 # Compute prompt hash for reproducibility tracking
 PROMPT_HASH = hashlib.sha256(SYSTEM_PROMPT.encode("utf-8")).hexdigest()
-PROMPT_VERSION = f"v1.0-sha256:{PROMPT_HASH[:12]}"
+PROMPT_VERSION = f"v1.0-git-sha256:{PROMPT_HASH[:12]}"
 
 
 # ============================================================================
@@ -212,7 +234,7 @@ class FileAnalysis:
     original_chars: int = 0
     analyzed_chars: int = 0
     skip_reason: str = ""
-    
+
     @property
     def should_analyze(self) -> bool:
         return not self.skip_reason
@@ -223,7 +245,7 @@ class LLMResult:
     """Container for LLM assessment results."""
     repo: str
     file_path: str
-    
+
     # SonarQube-comparable metrics
     cyclomatic_complexity: int | None = None
     cognitive_complexity: int | None = None
@@ -236,13 +258,13 @@ class LLMResult:
     reliability_issues: int | None = None
     security_issues: int | None = None
     technical_debt_minutes: int | None = None
-    
+
     # LLM-specific metrics
     readability_score: int | None = None
     assessment_confidence: float | None = None
     primary_concerns: list[str] = field(default_factory=list)
     summary: str = ""
-    
+
     # Metadata
     llm_model: str = ""
     llm_provider: str = ""
@@ -255,6 +277,7 @@ class LLMResult:
     prompt_version: str = PROMPT_VERSION
     analysis_date_utc: str = ""
     repo_head_sha: str | None = None
+    git_augmented: bool = True
 
 
 # ============================================================================
@@ -268,18 +291,15 @@ def should_analyze_file(file_path: Path, rel_path: str | None = None) -> tuple[b
     Returns:
         (should_analyze, skip_reason) - skip_reason empty if should analyze
     """
-    # Check extension
     if file_path.suffix.lower() not in ANALYZABLE_EXTENSIONS:
         return False, f"extension '{file_path.suffix}' not analyzable"
 
-    # Check shared Sonar filters using a repo-relative path when possible.
     filter_path = rel_path or str(file_path)
     if not is_included_path(filter_path):
         return False, "not included by Sonar filters"
     if is_excluded_path(filter_path):
         return False, "matches Sonar exclusions"
 
-    # Check file existence and size
     if not file_path.exists():
         return False, "file does not exist"
 
@@ -297,7 +317,7 @@ def should_analyze_file(file_path: Path, rel_path: str | None = None) -> tuple[b
 def read_and_truncate_code(file_path: Path) -> tuple[str, bool, int, int]:
     """
     Read source code and truncate if necessary to fit context window.
-    
+
     Returns:
         (code, is_truncated, original_chars, analyzed_chars)
     """
@@ -306,51 +326,127 @@ def read_and_truncate_code(file_path: Path) -> tuple[str, bool, int, int]:
     except Exception as e:
         logger.error(f"Failed to read {file_path}: {e}")
         return "", False, 0, 0
-    
+
     original_chars = len(code)
-    
+
     if MAX_CODE_CHARS is None:
         return code, False, original_chars, original_chars
 
     if original_chars <= MAX_CODE_CHARS:
         return code, False, original_chars, original_chars
-    
-    # Truncate: take head + tail for context preservation
+
     head = code[:HEAD_CHARS]
     tail = code[-TAIL_CHARS:] if TAIL_CHARS > 0 else ""
-    
+
     if tail:
         truncated = f"{head}\n\n/* ... [{original_chars - HEAD_CHARS - TAIL_CHARS} characters truncated] ... */\n\n{tail}"
     else:
         truncated = head
-    
+
     return truncated, True, original_chars, len(truncated)
 
 
 def prepare_file_analysis(repo: str, file_path: str, base_dir: Path) -> FileAnalysis:
     """Prepare a file for analysis, checking eligibility and reading content."""
-    # Normalize path
     rel_path = file_path.replace('\\', '/')
     if Path(rel_path).is_absolute():
         abs_path = Path(rel_path)
     else:
         abs_path = (base_dir / repo / rel_path).resolve()
-    
+
     analysis = FileAnalysis(
         repo=repo,
         file_path=rel_path,
         absolute_path=abs_path,
         language=detect_language(abs_path),
     )
-    
-    # Check if file should be analyzed
+
     should_analyze, skip_reason = should_analyze_file(abs_path, rel_path)
     if not should_analyze:
         analysis.skip_reason = skip_reason
         return analysis
-    
+
     analysis.file_size_bytes = abs_path.stat().st_size
     return analysis
+
+
+# ============================================================================
+# GIT METRICS LOADING
+# ============================================================================
+
+def load_git_metrics(git_csv: Path) -> dict[tuple[str, str], dict[str, Any]]:
+    """
+    Load git_metrics.csv into a lookup dict keyed by ``(repo, file_path)``.
+
+    Only the columns listed in :data:`GIT_PROMPT_FIELDS` (plus ``repo`` and
+    ``file_path``) are retained.  Missing values are kept as ``None``.
+    """
+    if not git_csv.exists():
+        logger.warning(f"Git metrics file not found: {git_csv}")
+        return {}
+
+    try:
+        df = pd.read_csv(git_csv)
+    except Exception as e:
+        logger.error(f"Failed to read git metrics CSV: {e}")
+        return {}
+
+    if df.empty:
+        return {}
+
+    required = {"repo", "file_path"}
+    if not required.issubset(df.columns):
+        logger.error("Git metrics CSV missing 'repo' and/or 'file_path' columns")
+        return {}
+
+    df["file_path"] = df["file_path"].astype(str).str.replace("\\", "/", regex=False)
+
+    keep_cols = list(required) + [col for col, _ in GIT_PROMPT_FIELDS if col in df.columns]
+    df = df[keep_cols]
+
+    lookup: dict[tuple[str, str], dict[str, Any]] = {}
+    for record in df.to_dict("records"):
+        key = (record["repo"], record["file_path"])
+        # Convert NaN → None for cleaner handling
+        clean = {}
+        for col, _ in GIT_PROMPT_FIELDS:
+            val = record.get(col)
+            if pd.isna(val) if not isinstance(val, str) else False:
+                clean[col] = None
+            else:
+                clean[col] = val
+        lookup[key] = clean
+
+    logger.info(f"Loaded git metrics for {len(lookup)} files")
+    return lookup
+
+
+def format_git_block(git_data: dict[str, Any] | None) -> str:
+    """
+    Format git metrics into a human-readable block for the LLM prompt.
+
+    Returns an empty string when there is no usable data.
+    """
+    if git_data is None:
+        return "\n\nGIT HISTORY METRICS:\nGit metrics are unavailable for this file."
+
+    status = git_data.get("git_metrics_status")
+    if status and str(status).lower() != "ok":
+        return "\n\nGIT HISTORY METRICS:\nGit metrics are unavailable for this file (status: {}).".format(status)
+
+    lines = ["\n\nGIT HISTORY METRICS:"]
+    for col, label in GIT_PROMPT_FIELDS:
+        val = git_data.get(col)
+        display = "N/A" if val is None else val
+        # Format dominant_author_share as percentage
+        if col == "dominant_author_share" and val is not None:
+            try:
+                display = f"{float(val):.1%}"
+            except (ValueError, TypeError):
+                pass
+        lines.append(f"- {label}: {display}")
+
+    return "\n".join(lines)
 
 
 # ============================================================================
@@ -360,21 +456,17 @@ def prepare_file_analysis(repo: str, file_path: str, base_dir: Path) -> FileAnal
 def clean_json_response(content: str) -> str:
     """Remove markdown fences and extract JSON from LLM response."""
     content = content.strip()
-    
-    # Remove markdown code fences
+
     if content.startswith("```"):
         lines = content.split('\n')
-        # Remove first line (```json or ```)
         lines = lines[1:]
-        # Remove last line if it's just ```
         if lines and lines[-1].strip() == "```":
             lines = lines[:-1]
         content = '\n'.join(lines).strip()
-    
-    # Handle "json" prefix without fences
+
     if content.lower().startswith("json"):
         content = content[4:].strip()
-    
+
     return content
 
 
@@ -423,7 +515,6 @@ def repair_json_response(content: str) -> str:
     extracted = _extract_json_object(content)
     if not extracted:
         return ""
-    # Remove trailing commas before closing braces/brackets.
     cleaned = re.sub(r",\s*([}\]])", r"\1", extracted)
     return cleaned
 
@@ -431,7 +522,7 @@ def repair_json_response(content: str) -> str:
 def parse_llm_response(content: str) -> tuple[dict[str, Any] | None, str]:
     """
     Parse and validate LLM JSON response.
-    
+
     Returns:
         (parsed_dict, error_message) - error_message empty on success
     """
@@ -460,14 +551,13 @@ def parse_llm_response(content: str) -> tuple[dict[str, Any] | None, str]:
 def validate_and_normalize(parsed: dict[str, Any]) -> tuple[LLMResult, list[str]]:
     """
     Validate parsed response and normalize to LLMResult.
-    
+
     Returns:
         (result, warnings) - result has fields set, warnings list issues
     """
     result = LLMResult(repo="", file_path="")
     warnings = []
-    
-    # Integer fields (required)
+
     int_fields = [
         ("cyclomatic_complexity", 0, 10000),
         ("cognitive_complexity", 0, 10000),
@@ -479,7 +569,7 @@ def validate_and_normalize(parsed: dict[str, Any]) -> tuple[LLMResult, list[str]
         ("technical_debt_minutes", 0, 100000),
         ("readability_score", 1, 10),
     ]
-    
+
     for field_name, min_val, max_val in int_fields:
         value = parsed.get(field_name)
         if value is None:
@@ -493,14 +583,13 @@ def validate_and_normalize(parsed: dict[str, Any]) -> tuple[LLMResult, list[str]
                 warnings.append(f"{field_name}={value} out of range [{min_val}, {max_val}]")
         except (ValueError, TypeError):
             warnings.append(f"{field_name}={value} not a valid integer")
-    
-    # Float fields
+
     float_fields = [
         ("comment_density", 0.0, 100.0),
         ("duplication_estimate", 0.0, 100.0),
         ("assessment_confidence", 0.0, 1.0),
     ]
-    
+
     for field_name, min_val, max_val in float_fields:
         value = parsed.get(field_name)
         if value is None:
@@ -514,21 +603,19 @@ def validate_and_normalize(parsed: dict[str, Any]) -> tuple[LLMResult, list[str]
                 warnings.append(f"{field_name}={value} out of range [{min_val}, {max_val}]")
         except (ValueError, TypeError):
             warnings.append(f"{field_name}={value} not a valid float")
-    
-    # List fields
+
     code_smells = parsed.get("code_smells_list", [])
     if isinstance(code_smells, list):
         result.code_smells_list = [str(s) for s in code_smells if s]
-    
+
     concerns = parsed.get("primary_concerns", [])
     if isinstance(concerns, list):
         result.primary_concerns = [str(c) for c in concerns if c]
-    
-    # String fields
+
     summary = parsed.get("summary", "")
     if isinstance(summary, str):
         result.summary = summary.strip()
-    
+
     return result, warnings
 
 
@@ -540,17 +627,19 @@ def analyze_file(
     client: LLMClient,
     file_analysis: FileAnalysis,
     model: str,
+    git_data: dict[str, Any] | None = None,
     max_retries: int = 2,
 ) -> LLMResult:
     """
-    Analyze a single file using the LLM.
-    
+    Analyze a single file using the LLM, augmented with git metrics.
+
     Args:
         client: Configured LLM client
         file_analysis: Prepared file analysis metadata
         model: Model name to use
+        git_data: Dict of git history metrics for this file, or None
         max_retries: Number of retries on parse failures
-    
+
     Returns:
         LLMResult with assessment data
     """
@@ -562,27 +651,25 @@ def analyze_file(
         prompt_version=PROMPT_VERSION,
         analysis_date_utc=config.now_utc_iso(),
     )
-    
-    # Check if file should be skipped
+
     if not file_analysis.should_analyze:
         result.error = f"Skipped: {file_analysis.skip_reason}"
         logger.debug(f"Skipping {file_analysis.file_path}: {file_analysis.skip_reason}")
         return result
-    
-    # Read and prepare code
+
     code, is_truncated, original_chars, analyzed_chars = read_and_truncate_code(
         file_analysis.absolute_path
     )
-    
+
     if not code:
         result.error = "Failed to read file"
         return result
-    
+
     result.is_truncated = is_truncated
     result.original_chars = original_chars
     result.analyzed_chars = analyzed_chars
-    
-    # Build user message
+
+    # ---- Build user message with code + git context ----
     truncation_note = ""
     if is_truncated:
         truncation_note = (
@@ -590,26 +677,29 @@ def analyze_file(
             f"{analyzed_chars} characters. Adjust confidence accordingly and "
             f"extrapolate metrics proportionally where appropriate."
         )
-    
-    user_message = f"""Analyze the following {file_analysis.language} source code and return the JSON assessment.{truncation_note}
 
-```{file_analysis.language}
-{code}
-```"""
-    
+    git_block = format_git_block(git_data)
+
+    user_message = (
+        f"Analyze the following {file_analysis.language} source code and return the JSON assessment."
+        f"{truncation_note}\n\n"
+        f"```{file_analysis.language}\n{code}\n```"
+        f"{git_block}"
+    )
+
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_message},
     ]
-    
-    # Call LLM with retries
+
+    # ---- Call LLM with retries ----
     last_error = ""
     for attempt in range(max_retries + 1):
         try:
             response = client.complete(model=model, messages=messages)
             raw_content = client.extract_content(response)
             result.raw_response = raw_content
-            
+
             parsed, parse_error = parse_llm_response(raw_content)
             if parse_error:
                 try:
@@ -634,36 +724,33 @@ def analyze_file(
                     f"Parse attempt {attempt + 1} failed for {file_analysis.file_path}: {parse_error}"
                 )
                 continue
-            
-            # Validate and populate result
+
             validated, warnings = validate_and_normalize(parsed)
-            
-            # Copy validated fields to result
-            for field in [
+
+            for fld in [
                 'cyclomatic_complexity', 'cognitive_complexity', 'lines_of_code',
                 'comment_density', 'code_smells_count', 'code_smells_list',
                 'duplication_estimate', 'maintainability_rating', 'reliability_issues',
                 'security_issues', 'technical_debt_minutes', 'readability_score',
                 'assessment_confidence', 'primary_concerns', 'summary'
             ]:
-                setattr(result, field, getattr(validated, field))
-            
+                setattr(result, fld, getattr(validated, fld))
+
             if warnings:
                 logger.debug(f"Validation warnings for {file_analysis.file_path}: {warnings}")
-            
-            # Check for critical missing fields
+
             critical_fields = ['cyclomatic_complexity', 'maintainability_rating', 'readability_score']
             missing_critical = [f for f in critical_fields if getattr(result, f) is None]
-            
+
             if missing_critical:
                 last_error = f"Missing critical fields: {missing_critical}"
                 if attempt < max_retries:
                     logger.warning(f"Retry {attempt + 1} for {file_analysis.file_path}: {last_error}")
                     continue
-            
+
             result.success = True
             return result
-            
+
         except LLMError as e:
             last_error = str(e)
             logger.warning(f"LLM error for {file_analysis.file_path}: {e}")
@@ -674,7 +761,7 @@ def analyze_file(
             last_error = str(e)
             logger.error(f"Unexpected error for {file_analysis.file_path}: {e}")
             break
-    
+
     result.error = last_error
     return result
 
@@ -689,7 +776,7 @@ def result_to_row(result: LLMResult) -> dict[str, Any]:
         # Identifiers
         "repo": result.repo,
         "file_path": result.file_path,
-        
+
         # SonarQube-comparable metrics (prefixed for clarity in merged dataset)
         "llm_cyclomatic_complexity": result.cyclomatic_complexity,
         "llm_cognitive_complexity": result.cognitive_complexity,
@@ -701,14 +788,14 @@ def result_to_row(result: LLMResult) -> dict[str, Any]:
         "llm_reliability_issues": result.reliability_issues,
         "llm_security_issues": result.security_issues,
         "llm_technical_debt_minutes": result.technical_debt_minutes,
-        
+
         # LLM-specific metrics
         "llm_readability_score": result.readability_score,
         "llm_assessment_confidence": result.assessment_confidence,
         "llm_code_smells_list": json.dumps(result.code_smells_list) if result.code_smells_list else "",
         "llm_primary_concerns": json.dumps(result.primary_concerns) if result.primary_concerns else "",
         "llm_summary": result.summary,
-        
+
         # Metadata
         "llm_model": result.llm_model,
         "llm_provider": result.llm_provider,
@@ -718,6 +805,7 @@ def result_to_row(result: LLMResult) -> dict[str, Any]:
         "llm_success": result.success,
         "llm_error": result.error,
         "llm_prompt_version": result.prompt_version,
+        "llm_git_augmented": result.git_augmented,
         "analysis_date_utc": result.analysis_date_utc,
         "repo_head_sha": result.repo_head_sha,
     }
@@ -727,25 +815,24 @@ def load_existing_results(output_path: Path, model: str) -> set[tuple[str, str]]
     """Load set of (repo, file_path) already processed for a model."""
     if not output_path.exists():
         return set()
-    
+
     try:
         df = pd.read_csv(output_path)
     except (pd.errors.EmptyDataError, Exception):
         return set()
-    
+
     if df.empty:
         return set()
-    
-    # Filter for successful results from the same model
+
     mask = df["llm_success"].astype(str).str.lower().isin({"true", "1"})
     if "llm_model" in df.columns and model:
         mask &= df["llm_model"] == model
-    
+
     df = df[mask]
-    
+
     if not {"repo", "file_path"}.issubset(df.columns):
         return set()
-    
+
     return set(zip(df["repo"], df["file_path"]))
 
 
@@ -753,128 +840,134 @@ def load_existing_results(output_path: Path, model: str) -> set[tuple[str, str]]
 # MAIN PIPELINE
 # ============================================================================
 
-def run_llm_judge(
-    input_csv: Path,
+def run_llm_judge_git(
+    input_csv: Path | None = None,
     output_path: Path | None = None,
     resume: bool = True,
 ) -> Path:
     """
-    Run LLM-based code assessment on files from SonarQube analysis.
-    
-    This is the main entry point for the LLM judge. It reads the list of files
-    from sonar_metrics.csv and produces llm_metrics_<model>_runNNN.csv with comparable metrics.
-    
+    Run the git-augmented LLM code assessment.
+
+    This variant reads the file list from ``git_metrics.csv`` (so only files
+    that have git data are evaluated) and injects the git history metrics into
+    each LLM prompt alongside the source code.
+
     Args:
-        input_csv: Path to sonar_metrics.csv or similar file list
-        output_path: Custom output path (default: data/results/llm/llm_metrics_<model>_runNNN.csv)
+        input_csv: Path to git_metrics.csv (default: ``config.git_metrics_path()``)
+        output_path: Custom output path
+            (default: ``data/results/llm/llm_git_metrics_<model>_runNNN.csv``)
         resume: If True, skip files already successfully analyzed
-    
+
     Returns:
         Path to the output CSV file
     """
-    # Load input file list
+    # Default input: git_metrics.csv
+    if input_csv is None:
+        input_csv = config.git_metrics_path()
+
     logger.info(f"Loading file list from {input_csv}")
     try:
         input_df = pd.read_csv(input_csv)
     except Exception as e:
         raise RuntimeError(f"Failed to read input CSV: {e}")
-    
+
     if "repo" not in input_df.columns or "file_path" not in input_df.columns:
         raise ValueError("Input CSV must contain 'repo' and 'file_path' columns")
-    
-    # Deduplicate and prepare file list
+
+    # Deduplicate and normalise paths
     input_df = input_df.drop_duplicates(subset=["repo", "file_path"])
     input_df["file_path"] = input_df["file_path"].astype(str).str.replace("\\", "/", regex=False)
-    
-    # Get model configuration
+
+    # Build git-metrics lookup from the same CSV
+    git_lookup = load_git_metrics(input_csv)
+
+    # Model configuration
     model = config.LLM_MODEL
     if not model:
         raise RuntimeError("LLM_MODEL must be configured")
 
     # Resolve output path
     if output_path is None:
-        output_path = config.llm_metrics_path(model)
-    
-    # Ensure output directory exists
+        output_path = config.llm_git_metrics_path(model)
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Resume handling
-    existing = set()
+    existing: set[tuple[str, str]] = set()
     if resume and config.LLM_RESUME:
         existing = load_existing_results(output_path, model)
         if existing:
             logger.info(f"Resuming: {len(existing)} files already processed")
-    
-    # Filter to unprocessed files
+
     file_records = input_df.to_dict("records")
     to_process = [
         r for r in file_records
         if (r["repo"], r["file_path"]) not in existing
     ]
-    
-    logger.info(f"Processing {len(to_process)} files with model {model}")
-    
+
+    logger.info(f"Processing {len(to_process)} files with model {model} (git-augmented)")
+
     if not to_process:
         logger.info("No files to process")
         return output_path
-    
-    # Initialize client
+
+    # Initialize LLM client
     client = LLMClient(config.LLM_BASE_URL, config.LLM_API_KEY, config.LLM_PROVIDER)
-    
-    # Cache for repo HEAD SHAs
+
+    # SHA cache
     sha_cache: dict[str, str | None] = {}
-    
+
     def get_repo_sha(repo: str) -> str | None:
         if repo not in sha_cache:
             sha_cache[repo] = config.git_head_sha(config.RAW_REPOS_DIR / repo)
         return sha_cache[repo]
-    
+
     # Process files
     results: list[dict] = []
     write_every = max(config.LLM_WRITE_EVERY, 10)
     header_written = output_path.exists() and output_path.stat().st_size > 0
-    
+
     for idx, record in enumerate(to_process, 1):
         repo = record["repo"]
         file_path = record["file_path"]
-        
-        # Prepare analysis
+
         file_analysis = prepare_file_analysis(repo, file_path, config.RAW_REPOS_DIR)
-        
-        # Run analysis
+
+        # Look up git metrics for this file
+        git_data = git_lookup.get((repo, file_path))
+
         result = analyze_file(
             client=client,
             file_analysis=file_analysis,
             model=model,
+            git_data=git_data,
             max_retries=config.LLM_MAX_RETRIES,
         )
         result.repo_head_sha = get_repo_sha(repo)
-        
-        # Log progress
+
         status = "✓" if result.success else "✗"
         if result.success:
             logger.info(f"[{idx}/{len(to_process)}] {status} {repo}/{file_path}")
         else:
             logger.warning(f"[{idx}/{len(to_process)}] {status} {repo}/{file_path}: {result.error}")
-        
-        # Convert to row and store (successes only)
+
         if result.success:
             results.append(result_to_row(result))
-        
-        # Periodic writes
+
+        # Periodic flush
         if len(results) >= write_every:
             df = pd.DataFrame(results)
             df.to_csv(output_path, index=False, mode="a", header=not header_written)
             header_written = True
             logger.debug(f"Flushed {len(results)} results to {output_path}")
             results.clear()
-    
+
     # Write remaining results
     if results:
         df = pd.DataFrame(results)
         df.to_csv(output_path, index=False, mode="a", header=not header_written)
-    
-    # Sort output if configured
+
+    # Sort output
     if config.LLM_SORT_OUTPUT and output_path.exists():
         try:
             final_df = pd.read_csv(output_path)
@@ -883,29 +976,28 @@ def run_llm_judge(
                 final_df.to_csv(output_path, index=False)
         except Exception as e:
             logger.warning(f"Could not sort output: {e}")
-    
-    logger.info(f"Wrote LLM metrics to {output_path}")
+
+    logger.info(f"Wrote git-augmented LLM metrics to {output_path}")
     return output_path
 
 
 def main() -> None:
     """Command-line entry point."""
-    # Configure logging
     if not logging.getLogger().handlers:
         logging.basicConfig(
             level=logging.INFO,
             format="[%(levelname)s] %(asctime)s - %(message)s",
             datefmt="%H:%M:%S",
         )
-    
-    sonar_metrics_csv = config.sonar_metrics_path()
-    
-    if not sonar_metrics_csv.exists():
-        logger.error(f"Input file not found: {sonar_metrics_csv}")
-        logger.info("Run sonar_runner.py first to generate sonar_metrics.csv")
+
+    git_metrics_csv = config.git_metrics_path()
+
+    if not git_metrics_csv.exists():
+        logger.error(f"Input file not found: {git_metrics_csv}")
+        logger.info("Run miner.py first to generate git_metrics.csv")
         return
-    
-    run_llm_judge(sonar_metrics_csv)
+
+    run_llm_judge_git(git_metrics_csv)
 
 
 if __name__ == "__main__":

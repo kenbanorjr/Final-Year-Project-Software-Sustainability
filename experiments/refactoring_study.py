@@ -41,6 +41,7 @@ from openai import OpenAI
 
 from pipeline.configs import config
 from pipeline.sonar_runner import run_sonar_scan, fetch_file_metrics, project_key_for_repo
+from pipeline.utils import detect_language, extract_code_from_response
 
 # ==============================================================================
 # CONFIGURATION
@@ -62,7 +63,8 @@ CALLSITE_CONTEXT_MAX_LINES = 6
 # LLM settings for refactoring
 REFACTOR_MODEL = os.environ.get("REFACTOR_MODEL", config.LLM_MODEL)
 REFACTOR_TEMPERATURE = 0.2       # Low temp for deterministic refactoring
-REFACTOR_MAX_TOKENS = 4000
+REFACTOR_MAX_TOKENS = 8192       # Must accommodate files up to MAX_NCLOC_PER_FILE lines
+TEST_CONTEXT_MAX_CHARS = 3000   # Max chars of test file content to include in prompt
 
 # Directories
 STUDY_DIR = config.RESULTS_DIR / "refactoring_study"
@@ -267,8 +269,12 @@ Context pack:
 {import_context}
 - Public symbols:
 {public_symbols}
+- Type/base-class signatures:
+{type_context}
 - Nearby call sites:
 {call_sites}
+- Relevant test code (DO NOT modify test expectations):
+{test_context}
 
 ```{language}
 {code}
@@ -477,6 +483,162 @@ def _extract_call_sites(repo_path: Path, file_rel_path: str, symbols: list[str])
         return "(unavailable)"
 
 
+def _find_test_context(repo_path: Path, file_rel_path: str, symbols: list[str], language: str) -> str:
+    """Find and return relevant test file excerpts that exercise the target file.
+
+    Strategy: look for test files that import or reference public symbols from
+    the target file.  We cap the returned text at TEST_CONTEXT_MAX_CHARS to
+    keep the prompt manageable.
+    """
+    if not symbols:
+        return "(no public symbols to search for)"
+
+    # Common test directory patterns per language
+    test_globs: list[str] = []
+    stem = Path(file_rel_path).stem
+
+    if language == "python":
+        test_globs = [f"**/test_{stem}.py", f"**/{stem}_test.py", f"**/tests/test_{stem}.py", f"**/test/**/{stem}*.py"]
+    elif language == "java":
+        test_globs = [f"**/{stem}Test.java", f"**/Test{stem}.java", f"**/test/**/{stem}*.java"]
+    elif language in {"javascript", "typescript"}:
+        ext = "ts" if language == "typescript" else "js"
+        test_globs = [f"**/{stem}.test.{ext}", f"**/{stem}.spec.{ext}", f"**/test/**/{stem}*.{ext}", f"**/__tests__/{stem}*.{ext}"]
+
+    # Collect candidate test files
+    candidates: list[Path] = []
+    for glob_pat in test_globs:
+        candidates.extend(repo_path.glob(glob_pat))
+    candidates = sorted(set(candidates))[:5]  # cap number of test files
+
+    if not candidates:
+        # Fallback: use ripgrep to find files that reference the first symbol in test dirs
+        if shutil.which("rg"):
+            try:
+                cmd = ["rg", "-l", "--max-count", "1", rf"\b{re.escape(symbols[0])}\b", str(repo_path)]
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=FAST_VERIFY_TIMEOUT_SEC, check=False)
+                for line in result.stdout.splitlines()[:5]:
+                    p = Path(line.strip())
+                    lower = str(p).lower()
+                    if ("test" in lower or "spec" in lower) and p.exists():
+                        candidates.append(p)
+            except Exception:
+                pass
+
+    if not candidates:
+        return "(no test files found)"
+
+    # Extract relevant snippets
+    snippets: list[str] = []
+    chars_remaining = TEST_CONTEXT_MAX_CHARS
+    for test_file in candidates:
+        if chars_remaining <= 0:
+            break
+        try:
+            content = test_file.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        # Only include if it actually references at least one symbol
+        if not any(sym in content for sym in symbols[:5]):
+            continue
+        rel = test_file.relative_to(repo_path) if test_file.is_relative_to(repo_path) else test_file
+        header = f"--- {rel} ---"
+        # Truncate if needed
+        excerpt = content[:chars_remaining]
+        snippets.append(f"{header}\n{excerpt}")
+        chars_remaining -= len(header) + len(excerpt) + 2
+
+    return "\n".join(snippets) if snippets else "(no relevant test files found)"
+
+
+def _extract_type_context(code: str, language: str) -> str:
+    """Extract type signatures, base classes, decorators, and interface info.
+
+    This gives the LLM visibility into contracts that must be preserved even
+    though they might not appear in the simple public-symbol list.
+    """
+    lines = code.splitlines()
+    context_lines: list[str] = []
+
+    if language == "python":
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            # Decorators
+            if stripped.startswith("@"):
+                context_lines.append(stripped)
+                continue
+            # Class with base classes
+            m = re.match(r"^class\s+([A-Za-z_]\w*)\s*\(([^)]+)\)\s*:", stripped)
+            if m:
+                context_lines.append(f"class {m.group(1)}({m.group(2)})")
+                continue
+            # Function signatures with type annotations
+            m = re.match(r"^def\s+([A-Za-z_]\w*)\s*\(([^)]*)\)\s*(?:->\s*(.+?))?\s*:", stripped)
+            if m:
+                sig = f"def {m.group(1)}({m.group(2)})"
+                if m.group(3):
+                    sig += f" -> {m.group(3)}"
+                context_lines.append(sig)
+                continue
+            # Protocol / TypeVar / type aliases
+            if any(kw in stripped for kw in ("TypeVar", "Protocol", "TypeAlias", "NewType")):
+                context_lines.append(stripped)
+
+    elif language == "java":
+        for line in lines:
+            stripped = line.strip()
+            # Annotations
+            if stripped.startswith("@") and not stripped.startswith("@Test"):
+                context_lines.append(stripped)
+                continue
+            # Class/interface/enum declarations with extends/implements
+            m = re.match(
+                r"(public\s+(?:abstract\s+)?(?:class|interface|enum)\s+[A-Za-z_]\w*"
+                r"(?:\s*<[^>]+>)?"
+                r"(?:\s+extends\s+[A-Za-z_][\w.<>,\s]*?)?"
+                r"(?:\s+implements\s+[A-Za-z_][\w.<>,\s]*?)?)\s*\{?",
+                stripped,
+            )
+            if m:
+                context_lines.append(m.group(1).strip())
+                continue
+            # Public method signatures (return type + generics)
+            m = re.match(r"(public\s+(?:static\s+)?(?:final\s+)?(?:[\w<>\[\],\s]+?)\s+[A-Za-z_]\w*\s*\([^)]*\))", stripped)
+            if m:
+                context_lines.append(m.group(1))
+
+    elif language in {"javascript", "typescript"}:
+        for line in lines:
+            stripped = line.strip()
+            # TypeScript interfaces and type aliases
+            m = re.match(r"(?:export\s+)?(?:interface|type)\s+([A-Za-z_]\w*(?:<[^>]+>)?)\s*(?:extends\s+([^{]+))?\s*[={]", stripped)
+            if m:
+                sig = f"interface/type {m.group(1)}"
+                if m.group(2):
+                    sig += f" extends {m.group(2).strip()}"
+                context_lines.append(sig)
+                continue
+            # Class declarations with extends/implements
+            m = re.match(
+                r"(?:export\s+)?class\s+([A-Za-z_]\w*)"
+                r"(?:\s+extends\s+([A-Za-z_][\w.]*))?",
+                stripped,
+            )
+            if m:
+                sig = f"class {m.group(1)}"
+                if m.group(2):
+                    sig += f" extends {m.group(2)}"
+                context_lines.append(sig)
+                continue
+            # Decorators (experimental / Angular / NestJS)
+            if stripped.startswith("@"):
+                context_lines.append(stripped)
+
+    # Cap output
+    joined = "\n".join(context_lines[:30])
+    return joined if joined else "(none)"
+
+
 def _issue_hints_from_metrics(metrics: Dict[str, Any]) -> str:
     hints: list[str] = []
     for key, value in metrics.items():
@@ -547,31 +709,86 @@ def _extract_js_class_static_methods(code: str) -> Dict[str, set[str]]:
 def validate_refactor_invariants(original_code: str, refactored_code: str, language: str) -> Optional[str]:
     """
     Validate API/symbol invariants to reject risky refactors early.
-    Currently enforced for JS/TS:
-    - exported symbols must remain present
-    - class static methods must remain present
+
+    Enforced checks per language:
+    - JS/TS: exported symbols and class static methods must remain present.
+    - Python: top-level function/class names must remain present.
+    - Java: public class/interface/enum and public method signatures must remain present.
     """
-    if language not in {"javascript", "typescript"}:
+    # ---- JS / TS checks ----
+    if language in {"javascript", "typescript"}:
+        orig_exports = _extract_js_exports(original_code)
+        new_exports = _extract_js_exports(refactored_code)
+        missing_exports = sorted(orig_exports - new_exports)
+        if missing_exports:
+            return f"Invariant failed: missing exported symbols: {', '.join(missing_exports[:12])}"
+
+        orig_static = _extract_js_class_static_methods(original_code)
+        new_static = _extract_js_class_static_methods(refactored_code)
+        missing_static: list[str] = []
+        for cls, methods in orig_static.items():
+            if not methods:
+                continue
+            current = new_static.get(cls, set())
+            for method in sorted(methods - current):
+                missing_static.append(f"{cls}.{method}")
+        if missing_static:
+            return f"Invariant failed: missing class static methods: {', '.join(missing_static[:12])}"
         return None
 
-    orig_exports = _extract_js_exports(original_code)
-    new_exports = _extract_js_exports(refactored_code)
-    missing_exports = sorted(orig_exports - new_exports)
-    if missing_exports:
-        return f"Invariant failed: missing exported symbols: {', '.join(missing_exports[:12])}"
+    # ---- Python checks ----
+    if language == "python":
+        orig_symbols = _extract_python_public_signatures(original_code)
+        new_symbols = _extract_python_public_signatures(refactored_code)
+        missing = sorted(set(orig_symbols) - set(new_symbols))
+        if missing:
+            return f"Invariant failed: missing Python public symbols: {', '.join(missing[:12])}"
+        return None
 
-    orig_static = _extract_js_class_static_methods(original_code)
-    new_static = _extract_js_class_static_methods(refactored_code)
-    missing_static: list[str] = []
-    for cls, methods in orig_static.items():
-        if not methods:
-            continue
-        current = new_static.get(cls, set())
-        for method in sorted(methods - current):
-            missing_static.append(f"{cls}.{method}")
-    if missing_static:
-        return f"Invariant failed: missing class static methods: {', '.join(missing_static[:12])}"
+    # ---- Java checks ----
+    if language == "java":
+        orig_sigs = _extract_java_public_signatures(original_code)
+        new_sigs = _extract_java_public_signatures(refactored_code)
+        missing = sorted(set(orig_sigs) - set(new_sigs))
+        if missing:
+            return f"Invariant failed: missing Java public signatures: {', '.join(missing[:12])}"
+        return None
+
     return None
+
+
+def _extract_python_public_signatures(code: str) -> list[str]:
+    """Extract top-level public function and class names (with param lists) from Python code."""
+    signatures: list[str] = []
+    for line in code.splitlines():
+        # Top-level def (no leading whitespace)
+        m = re.match(r"^def\s+([A-Za-z_][A-Za-z0-9_]*)\s*(\([^)]*\))", line)
+        if m:
+            signatures.append(f"def {m.group(1)}{m.group(2)}")
+            continue
+        # Top-level class
+        m = re.match(r"^class\s+([A-Za-z_][A-Za-z0-9_]*)\b", line)
+        if m:
+            signatures.append(f"class {m.group(1)}")
+            continue
+    return signatures
+
+
+def _extract_java_public_signatures(code: str) -> list[str]:
+    """Extract public class/interface/method signatures from Java code."""
+    signatures: list[str] = []
+    for line in code.splitlines():
+        stripped = line.strip()
+        # Public class / interface / enum
+        m = re.match(r"public\s+(?:abstract\s+)?(?:class|interface|enum)\s+([A-Za-z_][A-Za-z0-9_]*)\b", stripped)
+        if m:
+            signatures.append(m.group(0).split("{")[0].strip())
+            continue
+        # Public method
+        m = re.match(r"public\s+(?:static\s+)?(?:final\s+)?(?:[\w<>\[\],\s]+?)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)", stripped)
+        if m:
+            signatures.append(m.group(0).split("{")[0].strip())
+    return signatures
 
 
 def failure_signature(failure_type: str, command: Optional[str], error_snippet: Optional[str]) -> str:
@@ -713,46 +930,6 @@ def diff_stats(diff_text: str) -> Dict[str, int]:
     return {"added_lines": added, "removed_lines": removed}
 
 
-def detect_language(file_path: Path) -> str:
-    """Detect programming language from file extension."""
-    ext_map = {
-        ".java": "java",
-        ".py": "python",
-        ".js": "javascript",
-        ".ts": "typescript",
-        ".jsx": "javascript",
-        ".tsx": "typescript",
-        ".go": "go",
-        ".rs": "rust",
-        ".cpp": "cpp",
-        ".c": "c",
-    }
-    return ext_map.get(file_path.suffix.lower(), "unknown")
-
-
-def extract_code_from_response(response: str, language: str) -> Optional[str]:
-    """Extract code block from LLM response."""
-    # Try to find code block with language tag
-    patterns = [
-        rf"```{language}\s*\n(.*?)```",
-        rf"```{language[:4]}\s*\n(.*?)```",  # Partial match
-        r"```\s*\n(.*?)```",  # Generic code block
-    ]
-    
-    for pattern in patterns:
-        match = re.search(pattern, response, re.DOTALL | re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
-    
-    # If no code block, check if response is mostly code
-    lines = response.strip().split("\n")
-    non_prose_lines = sum(1 for line in lines if not line.strip().startswith(("#", "//", "/*", "*")))
-    if non_prose_lines > len(lines) * 0.7:
-        return response.strip()
-    
-    return None
-
-
 # ==============================================================================
 # CANDIDATE SELECTION
 # ==============================================================================
@@ -813,6 +990,8 @@ def create_refactoring_prompt(
     import_context: str,
     public_symbols: list[str],
     call_sites: str,
+    test_context: str = "(none)",
+    type_context: str = "(none)",
     retry_feedback: Optional[str] = None,
 ) -> RefactoringPrompt:
     """Create the refactoring prompt with file context."""
@@ -830,7 +1009,9 @@ def create_refactoring_prompt(
         issue_hints=_issue_hints_from_metrics(metrics),
         import_context=import_context,
         public_symbols=", ".join(public_symbols) if public_symbols else "(none)",
+        type_context=type_context,
         call_sites=call_sites,
+        test_context=test_context,
         retry_feedback=retry_text,
     )
     
@@ -841,6 +1022,22 @@ def create_refactoring_prompt(
         temperature=REFACTOR_TEMPERATURE,
         max_tokens=REFACTOR_MAX_TOKENS,
     )
+
+
+def _detect_line_ending(raw_bytes: bytes) -> str:
+    """Detect the dominant line ending in raw file bytes. Returns '\\r\\n' or '\\n'."""
+    crlf_count = raw_bytes.count(b"\r\n")
+    lf_count = raw_bytes.count(b"\n") - crlf_count  # standalone LFs only
+    return "\r\n" if crlf_count > lf_count else "\n"
+
+
+def _normalize_line_endings(text: str, target_eol: str) -> str:
+    """Normalize all line endings in *text* to *target_eol*."""
+    # First unify to \n, then replace if needed
+    unified = text.replace("\r\n", "\n").replace("\r", "\n")
+    if target_eol == "\r\n":
+        return unified.replace("\n", "\r\n")
+    return unified
 
 
 def apply_llm_refactoring(
@@ -856,9 +1053,11 @@ def apply_llm_refactoring(
 ) -> RefactoringResult:
     """Apply LLM-guided refactoring to a single file."""
     
-    # Read original code
+    # Read original code – detect line endings from raw bytes first
     try:
-        original_code = file_path.read_text(encoding="utf-8", errors="replace")
+        raw_bytes = file_path.read_bytes()
+        original_eol = _detect_line_ending(raw_bytes)
+        original_code = raw_bytes.decode("utf-8", errors="replace")
     except Exception as e:
         return RefactoringResult(
             file_path=str(file_path),
@@ -876,6 +1075,8 @@ def apply_llm_refactoring(
     import_context = _extract_import_context(original_code, language)
     public_symbols = _extract_public_symbols(original_code, language)
     call_sites = _extract_call_sites(repo_path, file_rel_path, public_symbols)
+    test_context = _find_test_context(repo_path, file_rel_path, public_symbols, language)
+    type_context = _extract_type_context(original_code, language)
     retry_context_parts: list[str] = []
     if attempt > 1:
         retry_context_parts.append(f"Attempt {attempt}.")
@@ -891,6 +1092,8 @@ def apply_llm_refactoring(
         import_context=import_context,
         public_symbols=public_symbols,
         call_sites=call_sites,
+        test_context=test_context,
+        type_context=type_context,
         retry_feedback="\n\n".join(retry_context_parts) if retry_context_parts else None,
     )
     
@@ -937,6 +1140,9 @@ def apply_llm_refactoring(
             llm_response_raw=raw_response,
             latency_ms=latency_ms,
         )
+
+    # Preserve original line endings
+    refactored_code = _normalize_line_endings(refactored_code, original_eol)
     
     # Check for forbidden patterns (rule suppression)
     forbidden_patterns = [
@@ -1032,7 +1238,7 @@ def detect_build_system(repo_path: Path) -> Tuple[str, str]:
 
     # Python
     if (repo_path / "setup.py").exists() or (repo_path / "pyproject.toml").exists() or (repo_path / "requirements.txt").exists():
-        return "python -m py_compile .", "pytest -q" if shutil.which("pytest") else ""
+        return "python -m compileall -q .", "pytest -q" if shutil.which("pytest") else ""
 
     # Go
     if (repo_path / "go.mod").exists():
@@ -1689,7 +1895,7 @@ def run_refactoring_study(
                         working_repo_path,
                         verify_profile,
                         include_install=False,
-                        run_test=False,
+                        run_test=True,
                     )
                     verify_commands.extend(verify_result.commands)
 

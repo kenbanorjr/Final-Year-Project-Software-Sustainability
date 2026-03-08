@@ -6,19 +6,19 @@ Steps:
 2. Run SonarQube scans and collect baseline metrics.
 3. Mine git history for churn/bus-factor on representative files.
 4. Run the LLM judge (code-only, Sonar file list).
+4b. (Optional) Run the git-augmented LLM judge (LLM_GIT_JUDGE=true).
 5. Merge outputs into final_dataset.csv.
 """
 
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 
 import pandas as pd
 
 from pipeline import clone_repos
 from pipeline import llm_judge
-from pipeline import llm_repo_summary
+from pipeline import llm_judge_git
 from pipeline import miner
 from pipeline import sonar_runner
 from pipeline import validate_outputs
@@ -51,12 +51,17 @@ def _drop_overlapping_columns(df: pd.DataFrame, existing_cols: set[str]) -> pd.D
 
 
 def merge_outputs(
-    git_metrics_csv: Path, sonar_metrics_csv: Path, llm_metrics_csv: Path, output_path: Path
+    git_metrics_csv: Path,
+    sonar_metrics_csv: Path,
+    llm_metrics_csv: Path,
+    output_path: Path,
+    llm_git_metrics_csv: Path | None = None,
 ) -> Path:
-    """Join the three result sets on repo/file_path."""
+    """Join result sets on repo/file_path."""
     git_df = _safe_read_csv(git_metrics_csv)
     sonar_df = _safe_read_csv(sonar_metrics_csv)
     llm_df = _safe_read_csv(llm_metrics_csv)
+    llm_git_df = _safe_read_csv(llm_git_metrics_csv) if llm_git_metrics_csv else pd.DataFrame()
 
     merged = sonar_df if not sonar_df.empty else git_df
     if merged.empty:
@@ -70,24 +75,16 @@ def merge_outputs(
     if not llm_df.empty:
         llm_df = _drop_overlapping_columns(llm_df, set(merged.columns))
         merged = merged.merge(llm_df, on=["repo", "file_path"], how="left")
+    if not llm_git_df.empty:
+        llm_git_df = _drop_overlapping_columns(llm_git_df, set(merged.columns))
+        merged = merged.merge(llm_git_df, on=["repo", "file_path"], how="left")
 
     merged.to_csv(output_path, index=False)
     print(f"[main] Wrote merged dataset to {output_path}")
     return output_path
 
 
-def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the sustainability evaluation pipeline.")
-    parser.add_argument(
-        "--with-repo-summary",
-        action="store_true",
-        help="Generate llm_repo_summary.csv after merging datasets.",
-    )
-    return parser.parse_args(argv)
-
-
-def main(argv: list[str] | None = None) -> None:
-    args = _parse_args(argv)
+def main() -> None:
     config.ensure_data_dirs()
 
     print("[main] Step 1: clone repositories")
@@ -103,18 +100,21 @@ def main(argv: list[str] | None = None) -> None:
     print("[main] Step 4: LLM judge (code-only, full Sonar file list)")
     llm_metrics_csv = llm_judge.run_llm_judge(sonar_metrics_csv)
 
+    llm_git_metrics_csv = None
+    if config.LLM_GIT_JUDGE:
+        print("[main] Step 4b: LLM judge (git-augmented)")
+        llm_git_metrics_csv = llm_judge_git.run_llm_judge_git(git_metrics_csv)
+
     print("[main] Step 5: merge datasets")
     merge_outputs(
         git_metrics_csv=git_metrics_csv,
         sonar_metrics_csv=sonar_metrics_csv,
         llm_metrics_csv=llm_metrics_csv,
         output_path=config.final_dataset_path(),
+        llm_git_metrics_csv=llm_git_metrics_csv,
     )
-    if args.with_repo_summary:
-        print("[main] Step 6: repo summary")
-        llm_repo_summary.run_repo_summaries()
     if config.VALIDATE_OUTPUTS:
-        print("[main] Step 7: validate outputs")
+        print("[main] Step 6: validate outputs")
         validate_outputs.run_validation()
 
 

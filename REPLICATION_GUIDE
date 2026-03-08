@@ -28,10 +28,7 @@ Reproduction steps (end-to-end)
    - Set `VALIDATE_OUTPUTS=true` before running, or run:
      python -m pipeline.validate_outputs
 
-5) Optional repo-level summary
-   python -m pipeline.llm_repo_summary
-
-6) Optional research analyses
+5) Optional research analyses
    python -m analysis.rq_process_sustainability
    python -m analysis.rq_visualizations
    python -m analysis.rq1_analysis.scripts.rq1_full_analysis
@@ -43,7 +40,6 @@ Core outputs
 - data/results/merged/final_dataset.csv
 
 Optional outputs
-- data/results/llm/llm_repo_summary.csv
 - data/results/validation/validate_report.json
 - data/results/holistic/holistic_assessments_<model>_runNNN.csv
 - analysis/rq1_analysis/figures/*.png

@@ -57,8 +57,7 @@ pip install -r requirements.txt
 3. Git mining
 4. LLM judging
 5. Dataset merge
-6. Optional repo summary (`--with-repo-summary`)
-7. Optional validation (`VALIDATE_OUTPUTS=true`)
+6. Optional validation (`VALIDATE_OUTPUTS=true`)
 
 ## Research Extras
 

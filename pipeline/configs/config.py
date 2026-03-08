@@ -15,10 +15,6 @@ from pathlib import Path
 import uuid
 
 
-def _split_csv(value: str) -> list[str]:
-    return [item.strip() for item in value.split(",") if item.strip()]
-
-
 def _int_env(name: str, default: int) -> int:
     value = os.environ.get(name, str(default))
     try:
@@ -52,12 +48,7 @@ LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "http://localhost:11434").strip()
 DEFAULT_LLM_MODEL = "qwen2.5-coder:7b"
 LLM_MODEL = os.environ.get("LLM_MODEL", DEFAULT_LLM_MODEL).strip() or DEFAULT_LLM_MODEL
 
-# Optional multi-model controls
-LLM_MODEL_LIST = _split_csv(os.environ.get("LLM_MODEL_LIST", ""))
-LLM_OUTPUT_PER_MODEL = os.environ.get("LLM_OUTPUT_PER_MODEL", "false").strip().lower() in {"1", "true", "yes"}
-
 # Shared LLM limits
-LLM_MAX_TOKENS = _int_env("LLM_MAX_TOKENS", 400)
 LLM_MAX_RETRIES = _int_env("LLM_MAX_RETRIES", 2)
 LLM_TIMEOUT_S = _int_env("LLM_TIMEOUT_S", 300)
 
@@ -66,9 +57,8 @@ LLM_RESUME = os.environ.get("LLM_RESUME", "true").strip().lower() in {"1", "true
 LLM_WRITE_EVERY = int(os.environ.get("LLM_WRITE_EVERY", "25"))
 LLM_SORT_OUTPUT = os.environ.get("LLM_SORT_OUTPUT", "true").strip().lower() in {"1", "true", "yes"}
 
-# LLM output paths
-LEGACY_LLM_METRICS_PATH = RESULTS_DIR / "llm_metrics.csv"
-LEGACY_HOLISTIC_ASSESSMENTS_PATH = RESULTS_DIR / "holistic_assessments.csv"
+# Optional: run the git-augmented LLM judge (Step 4b in main.py)
+LLM_GIT_JUDGE = os.environ.get("LLM_GIT_JUDGE", "false").strip().lower() in {"1", "true", "yes"}
 
 
 def _sanitize_filename_component(value: str) -> str:
@@ -121,9 +111,6 @@ def llm_metrics_path(model: str | None = None, prefer_existing: bool = False) ->
         path = _next_run_path(RESULTS_LLM_DIR, "llm_metrics", safe_model)
     if path is None:
         path = RESULTS_LLM_DIR / f"llm_metrics_{safe_model}_run001.csv"
-    if prefer_existing and not path.exists():
-        if LEGACY_LLM_METRICS_PATH.exists():
-            return LEGACY_LLM_METRICS_PATH
     return path
 
 
@@ -134,9 +121,6 @@ def holistic_assessments_path(model: str | None = None, prefer_existing: bool = 
         path = _next_run_path(RESULTS_HOLISTIC_DIR, "holistic_assessments", safe_model)
     if path is None:
         path = RESULTS_HOLISTIC_DIR / f"holistic_assessments_{safe_model}_run001.csv"
-    if prefer_existing and not path.exists():
-        if LEGACY_HOLISTIC_ASSESSMENTS_PATH.exists():
-            return LEGACY_HOLISTIC_ASSESSMENTS_PATH
     return path
 
 
@@ -151,17 +135,28 @@ def git_metrics_path() -> Path:
 def final_dataset_path() -> Path:
     return RESULTS_MERGED_DIR / "final_dataset.csv"
 
-
-def llm_repo_summary_path() -> Path:
-    return RESULTS_LLM_DIR / "llm_repo_summary.csv"
-
-
 def validate_report_path() -> Path:
     return RESULTS_VALIDATION_DIR / "validate_report.json"
 
 
 def llm_parse_failures_path() -> Path:
     return RESULTS_LLM_DIR / "llm_parse_failures.jsonl"
+
+
+def llm_git_metrics_path(model: str | None = None, prefer_existing: bool = False) -> Path:
+    """Output path for the git-augmented LLM judge (llm_git_metrics_<model>_runNNN.csv)."""
+    safe_model = _sanitize_filename_component(_model_value(model))
+    path = _latest_run_path(RESULTS_LLM_DIR, "llm_git_metrics", safe_model) if prefer_existing else None
+    if path is None and not prefer_existing:
+        path = _next_run_path(RESULTS_LLM_DIR, "llm_git_metrics", safe_model)
+    if path is None:
+        path = RESULTS_LLM_DIR / f"llm_git_metrics_{safe_model}_run001.csv"
+    return path
+
+
+def llm_git_parse_failures_path() -> Path:
+    return RESULTS_LLM_DIR / "llm_git_parse_failures.jsonl"
+
 
 # Validation controls
 VALIDATE_OUTPUTS = os.environ.get("VALIDATE_OUTPUTS", "false").strip().lower() in {"1", "true", "yes"}
